@@ -3,7 +3,7 @@ import pandas as pd
 import scipy.io as scio
 import os
 import json
-
+import jsonpath as jp
 
 def load_data():
     # 1). Load basic info included in the dataset.
@@ -45,7 +45,6 @@ def load_data():
         df_checkin = pd.DataFrame(city_data['selected_checkins'])  # (105961, 4)
         df_checkin.columns = ['user_id', 'time', 'Venue_id', 'Venue_category']
 
-
         df_friend_new = pd.DataFrame(city_data['friendship_new'])  # (10545, 2)
         df_friend_old = pd.DataFrame(city_data['friendship_old'])  # (8723, 2)
         df_friend = pd.merge(df_friend_new, df_friend_old, how='outer')  # (19268, 2)
@@ -58,7 +57,7 @@ def load_data():
 
     # def combine_extra_poi_info(df_poi: pd.DataFrame, dir):
         # get file names in the directory
-    def combine_extra_poi_info(dir):
+    def load_extra_poi_info(dir):
         file_names = os.listdir(dir)
         file_names = zip(file_names, range(len(file_names)))
         file_names = dict(file_names)
@@ -67,24 +66,46 @@ def load_data():
             # load extra poi info from json file
             with open(dir + file_name, 'r') as f:
                 extra_poi_info = json.load(f)
-            print(extra_poi_info)
+                # exact useful poi information
+                # might useful:
+                # id, name,
+                # contact{phone, twitter, facebook},
+                # location{address, lat, lng, city. country},
+                # categories[{id, name}],
+                # stats{tipCount, usersCount, checkinCount, visitsCount},
+                # likes{count}, rating, specials ?,
+                # reasons{count, items[{summary, reasonName}]} ?,
+                # open ?
+                id = extra_poi_info['id']
+                name = extra_poi_info['name']
+                contact = extra_poi_info['contact'] if 'contact' in extra_poi_info.keys() else ''
+                address = extra_poi_info['location']['address'] if 'address' in extra_poi_info.keys() else ''
+                lat = extra_poi_info['location']['lat'] if 'lat' in extra_poi_info.keys() else ''
+                lng = extra_poi_info['location']['lng'] if 'lng' in extra_poi_info.keys() else ''
+                city = extra_poi_info['location']['city'] if 'city' in extra_poi_info.keys() else ''
+                country = extra_poi_info['location']['country'] if 'country' in extra_poi_info.keys() else ''
+                categories = extra_poi_info['categories'] if 'categories' in extra_poi_info.keys() else ''
+                stats = extra_poi_info['stats'] if 'stats' in extra_poi_info.keys() else ''
+                like_count = extra_poi_info['likes']['count'] if 'likes' in extra_poi_info.keys() else ''
+                rating = extra_poi_info['rating'] if 'rating' in extra_poi_info.keys() else ''
+                # print(id, name, contact, address, lat, lng, city, country, categories, stats, like_count, rating)
 
+    def load_all():
+        # all_checkins, all_poi, all_friendships = load_basic_info()
+        # nyc_data, tky_data, sp_data, jk_data = load_city_info()
+        # # print(nyc_data)
+        # nyc_checkins, nyc_friendship, nyc_pois = process_city_data(nyc_data, all_poi)
+        # tky_checkins, tky_friendship, tky_pois = process_city_data(tky_data, all_poi)
+        # sp_checkins, sp_friendship, sp_pois = process_city_data(sp_data, all_poi)
+        # jk_checkins, jk_friendship, jk_pois = process_city_data(jk_data, all_poi)
 
+        base_dir = './data/raw/Venue_detail/'
+        cities = ['NYC', 'TKY', 'SP', 'JK']
+        for city in cities:
+            load_extra_poi_info(base_dir + city + '/')
 
-    # all_checkins, all_poi, all_friendships = load_basic_info()
-    # nyc_data, tky_data, sp_data, jk_data = load_city_info()
-    # # print(nyc_data)
-    # nyc_checkins, nyc_friendship, nyc_pois = process_city_data(nyc_data, all_poi)
-    # tky_checkins, tky_friendship, tky_pois = process_city_data(tky_data, all_poi)
-    # sp_checkins, sp_friendship, sp_pois = process_city_data(sp_data, all_poi)
-    # jk_checkins, jk_friendship, jk_pois = process_city_data(jk_data, all_poi)
-
-    base_dir = './data/raw/Venue_detail/'
-    cities = ['NYC', 'TKY', 'SP', 'JK']
-    combine_extra_poi_info(base_dir + cities[0] + '/')
-
-
-
+    load_all()
+    print('load success')
 
 if __name__ == '__main__':
     load_data()
