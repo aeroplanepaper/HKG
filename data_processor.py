@@ -67,7 +67,7 @@ def load_data():
             # load extra poi info from json file
             with open(dir + file_name, 'r') as f:
                 extra_poi_info = json.load(f)
-                side_info = []
+                side_info = {}
                 # exact useful poi information
                 # might useful:
                 # id, name,
@@ -91,15 +91,15 @@ def load_data():
                 rating = extra_poi_info['rating'] if 'rating' in extra_poi_info.keys() else ''
                 # print(id, name, contact, address, city, country, categories, stats, like_count, rating)
 
-                side_info.append({id, name})
-                side_info.append({id, contact})
-                side_info.append({id, address})
-                side_info.append({id, city})
-                side_info.append({id, country})
-                side_info.append({id, categories})
-                side_info.append({id, stats})
-                side_info.append({id, like_count})
-                side_info.append({id, rating})
+                side_info.append({1, {id, name}})
+                side_info.append({2, {id, contact}})
+                side_info.append({3, {id, address}})
+                side_info.append({4, {id, city}})
+                side_info.append({5, {id, country}})
+                side_info.append({6, {id, categories}})
+                side_info.append({7, {id, stats}})
+                side_info.append({8, {id, like_count}})
+                side_info.append({9, {id, rating}})
 
                 all_side_info.append(side_info)
 
