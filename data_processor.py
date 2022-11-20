@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pandas as pd
 import scipy.io as scio
@@ -63,6 +65,7 @@ def load_data():
         check_in = pd.read_csv(path + "checkins_" + city.lower() + "_follow_mat.csv")
         poi_data = pd.read_csv(path + "POI_" + city.lower() + "_follow_mat.csv")
 
+        print(city + "check_in number: ", len(check_in))
         users = set(list(check_in['userid']))
         print(city + " user number: ", len(users))
         venues = set(list(check_in['Venue_id']))
@@ -83,7 +86,7 @@ def load_data():
 
         friend_list = []
         for index, row in friend.iterrows():
-            if row['user1'] != row['user2']:
+            if row['user1'] != row['user2'] and row['user1'] in users and row['user2'] in users:
                 friend_list.append([row['user1'], row['user2']])
         print(city + " friendship number: ", len(friend_list))
 
@@ -105,8 +108,10 @@ def load_data():
             friend_list_index.append((users_dic[friend_list[i][0]], users_dic[friend_list[i][1]]))
 
         poi_data['venues_index'] = None
+        poi_data_venue_index = []
         for index, row in poi_data.iterrows():
-            poi_data['venues_index'][index] = venues_dic[row['Venue_id']]
+            poi_data_venue_index.append(venues_dic[row['Venue_id']])
+        poi_data['venues_index'] = poi_data_venue_index
 
         poi_data = poi_data.sort_values('Venue_id', ascending=True, inplace=False)
         poi_data = poi_data.reset_index(drop=True)
@@ -131,8 +136,10 @@ def load_data():
         check_in['venues_index'] = check_in_venues_index
         check_in['lat_lon'] = check_in_lat_lon
 
+        # check_in['local_year'] = None
         check_in['local_month'] = None
         check_in['hour_period'] = None
+        # check_in_local_year = []
         check_in_local_month = []
         check_in_hour_period = []
 
@@ -141,29 +148,43 @@ def load_data():
             timezone_offset = row['Timezone_offset']
             struct_time = time.mktime(time.strptime(time_1, "%a %b %d  %H:%M:%S %Y")) + timezone_offset * 60
             localtime = time.localtime(struct_time)  # 返回元组
+            # check_in_local_year.append(localtime[0])
             check_in_local_month.append(localtime[1])
             check_in_hour_period.append(time_partition(localtime[6], localtime[3], localtime[4]))
+        # check_in['local_year'] = check_in_local_year
         check_in['local_month'] = check_in_local_month
         check_in['hour_period'] = check_in_hour_period
 
-        co_occurrence_list_index = {}
+        user_trajectory_index = {}
         check_in = check_in.sort_values('users_index', ascending=True, inplace=False)
         user_group = check_in.groupby("users_index")
         user_group = list(user_group)
         for i in range(len(user_group)):  # 每一个group2 都是用户
             df = pd.DataFrame(user_group[i][1])  # 每个用户的访问轨迹
             df = df.reset_index(drop=True)
-            co_occurrence_list_index[df['users_index'][0]] = set(list(df['venues_index']))
+            user_trajectory_index[df['users_index'][0]] = set(list(df['venues_index']))
 
-        return check_in, friend_list_index, co_occurrence_list_index
+        return check_in, friend_list_index, user_trajectory_index
 
     def time_partition(day, hour, min):
-        # days [1-7] per 1 day, hours [0-23] per 1 hour, minutes [0-1] per 30 minutes
+        # days [0-6] per 1 day, hours [0-23] per 1 hour, minutes [0-1] per 30 minutes
         # the time will be partied into 7 * 24 * 2 index
         if 0 <= min < 30:
-            return day * hour * 2
+            return day * 48 + (hour + 1) * 2 - 1
         else:
-            return day * (hour * 2 + 1)
+            return day * 48 + (hour + 1) * 2
+
+    def dump_city_data(city, check_in, friend_list_index, user_trajectory_index):
+        path = './data/processed' + city + '/'
+        f = open(path + 'check_in.pkl')
+        pickle.dump(check_in, f)
+        f.close()
+        f = open(path + 'friend_list_index.pkl')
+        pickle.dump(friend_list_index, f)
+        f.close()
+        f = open(path + 'user_trajectory_index.pkl')
+        pickle.dump(user_trajectory_index, f)
+        f.close()
 
     def load_extra_poi_info(city):
         base_dir = './data/raw/Venue_detail/'
@@ -222,8 +243,9 @@ def load_data():
 
         for city in cities:
             check_in, poi_data, users, venues, friend = load_city_data(city)
-            check_in_processed, friend_processed, co_occurence_processed = process_city_data(city, check_in, poi_data, users, venues, friend)
-            poi_details = load_extra_poi_info(city)
+            check_in_processed, friend_processed, user_trajectory_processed = process_city_data(city, check_in, poi_data, users, venues, friend)
+            # dump_city_data(city, check_in_processed, friend_processed, user_trajectory_processed)
+            # poi_details = load_extra_poi_info(city)
 
     load_all()
     print('load success')
