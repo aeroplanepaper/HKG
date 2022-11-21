@@ -45,11 +45,13 @@ def load_data():
         tky_data = scio.loadmat('./data/raw/mat/dataset_connected_TKY.mat')
         sp_data = scio.loadmat('./data/raw/mat/dataset_connected_SaoPaulo.mat')
         jk_data = scio.loadmat('./data/raw/mat/dataset_connected_Jakarta.mat')
+
         return nyc_data, tky_data, sp_data, jk_data
 
     def process_city_info(city_data, all_poi: pd.DataFrame):
         df_checkin = pd.DataFrame(city_data['selected_checkins'])  # (105961, 4)
         df_checkin.columns = ['user_id', 'time', 'Venue_id', 'Venue_category']
+
         df_friend_new = pd.DataFrame(city_data['friendship_new'])  # (10545, 2)
         df_friend_old = pd.DataFrame(city_data['friendship_old'])  # (8723, 2)
         df_friend = pd.merge(df_friend_new, df_friend_old, how='outer')  # (19268, 2)
@@ -425,7 +427,8 @@ def load_data():
     def load_all():
         # all_checkins, all_poi, all_friendships = load_basic_info()
         # all_checkin_relations = process_checkin(all_checkins)
-        cities = ['NYC', 'TKY', 'SP', 'JK', 'KL']
+        # cities = ['NYC', 'TKY', 'SP', 'JK', 'KL']
+        cities = ['NYC']
         # cities = ['IST']  # 数据很多有问题，只有极少的信息
 
         for city in cities:
@@ -435,6 +438,7 @@ def load_data():
             # dump_city_data(city, check_in_processed, friend_processed, user_trajectory_processed)
 
             poi_details = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
+            dump_city_data(city, check_in_processed, friend_processed, user_trajectory_processed, poi_details)
 
     load_all()
     print('load success')
