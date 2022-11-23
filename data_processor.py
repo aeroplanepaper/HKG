@@ -6,66 +6,74 @@ import scipy.io as scio
 import os
 import json
 import time
+import geohash
+from itertools import combinations
+
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
+import torch.nn as nn
+import torch
+
+import utils
 
 
-def load_data():
+def load_data(city):
     # 1). Load basic info included in the dataset.
-    def load_basic_info():
-        df_checkins = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_Checkins_anonymized.txt', sep='\t',
-                                  header=None)
-        df_checkins.columns = ['user_id', 'Venue_id', 'utc_time', 'Timezone_offset']
+    # def load_basic_info():
+    #     df_checkins = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_Checkins_anonymized.txt', sep='\t',
+    #                               header=None)
+    #     df_checkins.columns = ['user_id', 'Venue_id', 'utc_time', 'Timezone_offset']
+    #
+    #     df_poi = pd.read_csv('./data/raw/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
+    #     df_poi.columns = ['Venue_id', 'latitude', 'longitude', 'category', 'Country_code']
+    #
+    #     df_friendship_old = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_friendship_old.txt', sep='\t',
+    #                                     header=None)
+    #     df_friendship_old.columns = ['user_id1', 'user_id2']
+    #
+    #     df_friendship_new = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_friendship_new.txt', sep='\t',
+    #                                     header=None)
+    #     df_friendship_new.columns = ['user_id1', 'user_id2']
+    #     df_friendship = pd.merge(df_friendship_old, df_friendship_new, how='outer')
+    #
+    #     # print basic info
+    #     print('Number of users: ', len(df_checkins['user_id'].unique()))
+    #     print('Number of POIs: ', len(df_checkins['Venue_id'].unique()))
+    #     print('Number of checkins: ', len(df_checkins))
+    #     print('Number of friendship_old: ', len(df_friendship_old))
+    #     print('Number of friendship_new: ', len(df_friendship_new))
+    #     print('Number of friendship: ', len(df_friendship))
+    #     print('Number of countries: ', len(df_poi['Country_code'].unique()))
+    #     print('Number of categories: ', len(df_poi['category'].unique()))
+    #
+    #     return df_checkins, df_poi, df_friendship
 
-        df_poi = pd.read_csv('./data/raw/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
-        df_poi.columns = ['Venue_id', 'latitude', 'longitude', 'category', 'Country_code']
-
-        df_friendship_old = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_friendship_old.txt', sep='\t',
-                                        header=None)
-        df_friendship_old.columns = ['user_id1', 'user_id2']
-
-        df_friendship_new = pd.read_csv('./data/raw/dataset_WWW2019/dataset_WWW_friendship_new.txt', sep='\t',
-                                        header=None)
-        df_friendship_new.columns = ['user_id1', 'user_id2']
-        df_friendship = pd.merge(df_friendship_old, df_friendship_new, how='outer')
-
-        # print basic info
-        print('Number of users: ', len(df_checkins['user_id'].unique()))
-        print('Number of POIs: ', len(df_checkins['Venue_id'].unique()))
-        print('Number of checkins: ', len(df_checkins))
-        print('Number of friendship_old: ', len(df_friendship_old))
-        print('Number of friendship_new: ', len(df_friendship_new))
-        print('Number of friendship: ', len(df_friendship))
-        print('Number of countries: ', len(df_poi['Country_code'].unique()))
-        print('Number of categories: ', len(df_poi['category'].unique()))
-
-        return df_checkins, df_poi, df_friendship
-
-    def load_city_info():
-        # 2). Load the checkins data (Only keep the checkins in the 4 selected cities)
-        nyc_data = scio.loadmat('./data/raw/mat/dataset_connected_NYC.mat')
-        tky_data = scio.loadmat('./data/raw/mat/dataset_connected_TKY.mat')
-        sp_data = scio.loadmat('./data/raw/mat/dataset_connected_SaoPaulo.mat')
-        jk_data = scio.loadmat('./data/raw/mat/dataset_connected_Jakarta.mat')
-
-        return nyc_data, tky_data, sp_data, jk_data
-
-    def process_city_info(city_data, all_poi: pd.DataFrame):
-        df_checkin = pd.DataFrame(city_data['selected_checkins'])  # (105961, 4)
-        df_checkin.columns = ['user_id', 'time', 'Venue_id', 'Venue_category']
-
-        df_friend_new = pd.DataFrame(city_data['friendship_new'])  # (10545, 2)
-        df_friend_old = pd.DataFrame(city_data['friendship_old'])  # (8723, 2)
-        df_friend = pd.merge(df_friend_new, df_friend_old, how='outer')  # (19268, 2)
-
-        for i in range(len(df_checkin['Venue_id'])):
-            df_checkin['Venue_id'][i] = (all_poi.iloc[df_checkin['Venue_id'][i]][0], df_checkin['Venue_id'][i])
-            # df_checkin['Venue_category'][i] = all_poi.iloc[df_checkin['Venue_id'][i][1]][3]
-
-        return df_checkin, df_friend, df_checkin['Venue_id'].unique()
+    # def load_city_info():
+    #     # 2). Load the checkins data (Only keep the checkins in the 4 selected cities)
+    #     nyc_data = scio.loadmat('./data/raw/mat/dataset_connected_NYC.mat')
+    #     tky_data = scio.loadmat('./data/raw/mat/dataset_connected_TKY.mat')
+    #     sp_data = scio.loadmat('./data/raw/mat/dataset_connected_SaoPaulo.mat')
+    #     jk_data = scio.loadmat('./data/raw/mat/dataset_connected_Jakarta.mat')
+    #
+    #     return nyc_data, tky_data, sp_data, jk_data
+    #
+    # def process_city_info(city_data, all_poi: pd.DataFrame):
+    #     df_checkin = pd.DataFrame(city_data['selected_checkins'])  # (105961, 4)
+    #     df_checkin.columns = ['user_id', 'time', 'Venue_id', 'Venue_category']
+    #
+    #     df_friend_new = pd.DataFrame(city_data['friendship_new'])  # (10545, 2)
+    #     df_friend_old = pd.DataFrame(city_data['friendship_old'])  # (8723, 2)
+    #     df_friend = pd.merge(df_friend_new, df_friend_old, how='outer')  # (19268, 2)
+    #
+    #     for i in range(len(df_checkin['Venue_id'])):
+    #         df_checkin['Venue_id'][i] = (all_poi.iloc[df_checkin['Venue_id'][i]][0], df_checkin['Venue_id'][i])
+    #         # df_checkin['Venue_category'][i] = all_poi.iloc[df_checkin['Venue_id'][i][1]][3]
+    #
+    #     return df_checkin, df_friend, df_checkin['Venue_id'].unique()
 
     def load_city_data(city):
         path = "./data/raw/follow_mat/" + city + "/"
-        check_in = pd.read_csv(path + "checkins_" + city.lower() + "_follow_mat.csv")
-        poi_data = pd.read_csv(path + "POI_" + city.lower() + "_follow_mat.csv")
+        check_in = pd.read_csv(path + "checkins_" + city + "_follow_mat.csv")
+        poi_data = pd.read_csv(path + "POI_" + city + "_follow_mat.csv")
 
         print(city + " check_in number: ", len(check_in))
         users = set(list(check_in['userid']))
@@ -76,7 +84,8 @@ def load_data():
         friend_old = np.load(path + "friend_old.npy")
         friend_new = np.load(path + "friend_new.npy")
         friend = np.vstack([friend_old, friend_new])
-
+        # inverse_friend = np.array([friend[:, 1], friend[:, 0]]).T
+        # friend = np.vstack([friend, inverse_friend])
         return check_in, poi_data, users, venues, friend
 
     def process_city_data(city, check_in, poi_data, users, venues, friend):
@@ -98,11 +107,19 @@ def load_data():
         for i in range(len(users_sort)):
             users_dic[users_sort[i]] = i
 
+        user_index = {}
+        user_index['start'] = 0
+        user_index['end'] = len(users_sort) - 1
+
         # recode venues
         venues_sort = list(sorted(list(venues)))
         venues_dic = {}
         for i in range(len(venues_sort)):
             venues_dic[venues_sort[i]] = i + len(users_sort)
+
+        poi_index = {}
+        poi_index['start'] = len(users_sort)
+        poi_index['end'] = len(users_sort) + len(venues_sort) - 1
 
         current_index = len(users_sort) + len(venues_sort) - 1
         # recode friendship
@@ -122,22 +139,81 @@ def load_data():
         for index, row in poi_data.iterrows():
             poi_lat_lon[row['venues_index']] = (row['latitude'], row['longitude'])
 
+        poi_location = {}
+        all_geo_4 = {}
+        all_geo_5 = {}
+        all_geo_6 = {}
+
+        geo_relations = {}
+        count = 0
+        for poi in poi_lat_lon.keys():
+            location = poi_lat_lon[poi]
+            geohash_4, geohash_5, geohash_6 = transform_location(location)
+            if geohash_4 not in all_geo_4:
+                all_geo_4[geohash_4] = len(all_geo_4) + 1
+            if geohash_5 not in all_geo_5:
+                all_geo_5[geohash_5] = len(all_geo_5) + 1
+            if geohash_6 not in all_geo_6:
+                all_geo_6[geohash_6] = len(all_geo_6) + 1
+            poi_location[poi] = {}
+            poi_location[poi]['geohash_4'] = geohash_4
+            poi_location[poi]['geohash_5'] = geohash_5
+            poi_location[poi]['geohash_6'] = geohash_6
+            geo_relations[count] = [geohash_4, geohash_5, geohash_6]
+            count += 1
+
+        for geo_4 in all_geo_4.keys():
+            all_geo_4[geo_4] = all_geo_4[geo_4] + current_index
+        current_index += len(all_geo_4)
+
+        for geo_5 in all_geo_5.keys():
+            all_geo_5[geo_5] = all_geo_5[geo_5] + current_index
+        current_index += len(all_geo_5)
+
+        for geo_6 in all_geo_6.keys():
+            all_geo_6[geo_6] = all_geo_6[geo_6] + current_index
+        current_index += len(all_geo_6)
+
+        for poi in poi_location.keys():
+            poi_location[poi]['geohash_4'] = all_geo_4[poi_location[poi]['geohash_4']]
+            poi_location[poi]['geohash_5'] = all_geo_5[poi_location[poi]['geohash_5']]
+            poi_location[poi]['geohash_6'] = all_geo_6[poi_location[poi]['geohash_6']]
+
+        for geo in geo_relations.keys():
+            geo_relations[geo][0] = all_geo_4[geo_relations[geo][0]]
+            geo_relations[geo][1] = all_geo_5[geo_relations[geo][1]]
+            geo_relations[geo][2] = all_geo_6[geo_relations[geo][2]]
+
+
+    # encode the lat and lon to geohash
+
         check_in = check_in.sort_values('Venue_id', ascending=True, inplace=False)
         check_in = check_in.reset_index(drop=True)
         check_in['users_index'] = None
         check_in['venues_index'] = None
-        check_in['lat_lon'] = None
+        # check_in['lat_lon'] = None
         check_in_users_index = []
         check_in_venues_index = []
-        check_in_lat_lon = []
+        # check_in_lat_lon = []
+        check_in_geohash_4 = []
+        check_in_geohash_5 = []
+        check_in_geohash_6 = []
 
         for index, row in check_in.iterrows():
             check_in_users_index.append(users_dic[row['userid']])
             check_in_venues_index.append(venues_dic[row['Venue_id']])
-            check_in_lat_lon.append(poi_lat_lon[venues_dic[row['Venue_id']]])
+            # check_in_lat_lon.append(poi_lat_lon[venues_dic[row['Venue_id']]])
+            check_in_geohash_4.append(poi_location[venues_dic[row['Venue_id']]]['geohash_4'])
+            check_in_geohash_5.append(poi_location[venues_dic[row['Venue_id']]]['geohash_5'])
+            check_in_geohash_6.append(poi_location[venues_dic[row['Venue_id']]]['geohash_6'])
+
+
         check_in['users_index'] = check_in_users_index
         check_in['venues_index'] = check_in_venues_index
-        check_in['lat_lon'] = check_in_lat_lon
+        # check_in['lat_lon'] = check_in_lat_lon
+        check_in['geohash_4'] = check_in_geohash_4
+        check_in['geohash_5'] = check_in_geohash_5
+        check_in['geohash_6'] = check_in_geohash_6
 
         # check_in['local_year'] = None
         check_in['local_month'] = None
@@ -187,8 +263,9 @@ def load_data():
             df = pd.DataFrame(user_group[i][1])  # 每个用户的访问轨迹
             df = df.reset_index(drop=True)
             user_trajectory_index[df['users_index'][0]] = set(list(df['venues_index']))
-
-        return check_in, friend_list_index, user_trajectory_index, venues_dic, time_hour_dic, time_month_dic, current_index
+        check_in = check_in.drop(columns=['userid', 'Venue_id', 'utc_time', 'Timezone_offset'])
+        return check_in, friend_list_index, user_trajectory_index, venues_dic, time_hour_dic, time_month_dic, \
+               geo_relations, current_index, user_index, poi_index
 
     def time_partition(day, hour, min):
         # days [0-6] per 1 day, hours [0-23] per 1 hour, minutes [0-1] per 30 minutes
@@ -255,11 +332,8 @@ def load_data():
                 #     # todo: 4ad83e6ff964a520eb1021e3.json airport 只有category
                 #     print(file_name)
                 #     continue
-                # id = extra_poi_info['id']
-                # if id == '4ad83e6ff964a520eb1021e3':
-                #     continue
-                #
-                #
+
+                id = extra_poi_info['id']
                 if id not in venues or id in all_side_info:
                     continue
 
@@ -272,6 +346,9 @@ def load_data():
                     if contact not in all_contact:
                         all_contact[contact] = len(all_contact) + 1
                     contacts_processed.add(all_contact[contact])
+
+                if len(contacts_processed) == 0:
+                    contacts_processed.add(0) # 5 is the index of 'None'
 
                 categories = extra_poi_info['categories']
                 category_level_one_processed = set()
@@ -348,9 +425,9 @@ def load_data():
 
         # print(current_index)
         for key in all_side_info.keys():
-            all_side_info[key]['contact'] = {current_index + val for val in all_side_info[key]['contact']}
+            all_side_info[key]['contact'] = {current_index + val + 1 for val in all_side_info[key]['contact']}
 
-        current_index += len(all_contact)
+        current_index += len(all_contact) + 1
 
         for key in all_category_level_one:
             all_category_level_one[key] = current_index + all_category_level_one[key]
@@ -401,7 +478,7 @@ def load_data():
         print("Total vertex number", current_index)
 
         print(city + ' side information number: ', len(all_side_info))
-        return all_side_info
+        return all_side_info, all_category_level_two
 
     def cut_all_count(all_count, cut_num):
         all_count = np.sort(all_count)
@@ -424,25 +501,229 @@ def load_data():
                 break
         return index
 
-    def load_all():
+    def transform_location(location):
+        lat, lng = location[0], location[1]
+        hash_4 = geohash.encode(lat, lng, precision=4)
+        hash_5 = geohash.encode(lat, lng, precision=5)
+        hash_6 = geohash.encode(lat, lng, precision=6)
+        return hash_4, hash_5, hash_6
+
+    def extract_relations(city, check_ins:pd.DataFrame, friend, user_trajectory,
+                      time_hour_dic, time_month_dic, poi_details, all_categories):
+        relations = {}
+        total_relation = 0
+        check_in_relation = {}
+        friendship_relation = {}
+        categories_relation = {}
+        time_relation = {}
+        contact_relation = {}
+        poi_category_one_relation = {}
+        poi_category_two_relation = {}
+        poi_counts_relation = {}
+        poi_price_relation = {}
+
+        check_ins = np.array(check_ins)
+        for i in range(len(check_ins)):
+            check_in_relation[i] = check_ins[i]
+        relations['check_in'] = check_in_relation
+        # type 1 : check in
+        total_relation += len(check_in_relation)
+
+        for i in range(len(friend)):
+            friendship_relation[i] = friend[i]
+        relations['friendship'] = friendship_relation
+        # type 2 : friendship
+        total_relation += len(friendship_relation)
+
+        count = 0
+        for key in all_categories.keys():
+            category_level2 = all_categories[key]['index']
+            category_level1 = all_categories[key]['parent']
+            categories_relation[count] = [category_level1, category_level2]
+            count += 1
+        relations['category'] = categories_relation
+        # type 3 : category
+        total_relation += count
+
+        count = 0
+        for month in time_month_dic.keys():
+            month_node = time_month_dic[month]
+            for period in time_hour_dic.keys():
+                time_relation[count] = [month_node, time_hour_dic[period]]
+                count += 1
+        relations['time'] = time_relation
+        total_relation += count
+        # type 4 : time
+
+        count = 0
+        for poi in poi_details.keys():
+            # poi = poi_details[key]['index']
+            contacts = poi_details[poi]['contact']
+            category_level_one = poi_details[poi]['category_level_one']
+            category_level_two = poi_details[poi]['category_level_two']
+            tip_count = poi_details[poi]['tip_count']
+            price_tier = poi_details[poi]['price_tier']
+            like_count = poi_details[poi]['like_count']
+            rating = poi_details[poi]['rating']
+            photos_count = poi_details[poi]['photos_count']
+
+            contact_relation[count] = [poi] + [contact for contact in contacts]
+            poi_category_one_relation[count] = [poi] + [category for category in category_level_one]
+            poi_category_two_relation[count] = [poi] + [category for category in category_level_two]
+            poi_counts_relation[count] = [poi, tip_count, like_count, rating, photos_count]
+            poi_price_relation[count] = [poi, price_tier]
+            count += 1
+
+        relations['poi_category_one'] = poi_category_one_relation
+        relations['poi_category_two'] = poi_category_two_relation
+        relations['poi_counts'] = poi_counts_relation
+        relations['poi_price'] = poi_price_relation
+
+        total_relation += count * 5
+        return relations, total_relation
+
+
+    def load_all(city):
         # all_checkins, all_poi, all_friendships = load_basic_info()
         # all_checkin_relations = process_checkin(all_checkins)
         # cities = ['NYC', 'TKY', 'SP', 'JK', 'KL']
-        cities = ['NYC']
+        # cities = ['NYC']
         # cities = ['IST']  # 数据很多有问题，只有极少的信息
 
-        for city in cities:
-            check_in, poi_data, users, venues, friend = load_city_data(city)
-            check_in_processed, friend_processed, user_trajectory_processed, venues_dic, time_hour_dic, time_month_dic, current_index \
-                = process_city_data(city, check_in, poi_data, users, venues, friend)
-            # dump_city_data(city, check_in_processed, friend_processed, user_trajectory_processed)
+        # for city in cities:
+        check_in, poi_data, users, venues, friend = load_city_data(city)
 
-            poi_details = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
-            dump_city_data(city, check_in_processed, friend_processed, user_trajectory_processed, poi_details)
+        check_in_processed, friend_processed, user_trajectory_processed, venues_dic, time_hour_dic, \
+            time_month_dic, geo_relations, current_index, user_index, poi_index = process_city_data(city, check_in, poi_data, users, venues, friend)
 
-    load_all()
-    print('load success')
+        poi_details, all_categories = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
+        relations, total_relation_num = extract_relations(city, check_in_processed, friend_processed, user_trajectory_processed,
+                                      time_hour_dic, time_month_dic, poi_details, all_categories)
+        relations['poi_geo'] = geo_relations
 
+        hyper_edges = relations
+        hyper_edges['trajectory'] = user_trajectory_processed
 
-if __name__ == '__main__':
-    load_data()
+        total_edge_num = total_relation_num + len(user_trajectory_processed)
+        total_relation_num += len(geo_relations)
+
+        print('Total edge number: ', total_edge_num)
+        print('Total relation number:{}'.format(total_relation_num))
+        print('load success')
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+
+    #load from file
+    try:
+        # raise Exception
+        relations = pickle.load(open('./data/processed/'+city+'/relations.pkl', 'rb'))
+        hyper_edges = pickle.load(open('./data/processed/'+city+'/hyper_edges.pkl', 'rb'))
+        total_relation_num = pickle.load(open('./data/processed/'+city+'/total_relation_num.pkl', 'rb'))
+        total_edge_num = pickle.load(open('./data/processed/'+city+'/total_edge_num.pkl', 'rb'))
+        user_index = pickle.load(open('./data/processed/'+city+'/user_index.pkl', 'rb'))
+        poi_index = pickle.load(open('./data/processed/'+city+'/poi_index.pkl', 'rb'))
+        print('load data from file success')
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+    except:
+        # print('load failed')
+        print('load data from file failed, load from raw data')
+        relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index = load_all(city)
+        pickle.dump(relations, open('./data/processed/'+city+'/relations.pkl', 'wb'))
+        pickle.dump(hyper_edges, open('./data/processed/'+city+'/hyper_edges.pkl', 'wb'))
+        pickle.dump(total_relation_num, open('./data/processed/'+city+'/total_relation_num.pkl', 'wb'))
+        pickle.dump(total_edge_num, open('./data/processed/'+city+'/total_edge_num.pkl', 'wb'))
+        pickle.dump(user_index, open('./data/processed/'+city+'/user_index.pkl', 'wb'))
+        pickle.dump(poi_index, open('./data/processed/'+city+'/poi_index.pkl', 'wb'))
+        print('load data from raw data success')
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+
+def ConstructV2V(edge_index):
+    # Assume edge_index = [V;E], sorted
+    """
+    For each he, clique-expansion. Note that we DONT allow duplicated edges.
+    Instead, we record its corresponding weights.
+    We default no self loops so far.
+    """
+    
+    edge_weight_dict = {}
+    for he in np.unique(edge_index[1, :]):
+        nodes_in_he = np.sort(edge_index[0, :][edge_index[1, :] == he])
+        if len(nodes_in_he) == 1:
+            continue  # skip self loops
+        combs = combinations(nodes_in_he, 2)
+        for comb in combs:
+            if not comb in edge_weight_dict.keys():
+                edge_weight_dict[comb] = 1
+            else:
+                edge_weight_dict[comb] += 1
+
+# # Now, translate dict to edge_index and norm
+#
+    new_edge_index = np.zeros((2, len(edge_weight_dict)))
+    new_norm = np.zeros((len(edge_weight_dict)))
+    cur_idx = 0
+    for edge in edge_weight_dict:
+        new_edge_index[:, cur_idx] = edge
+        new_norm[cur_idx] = edge_weight_dict[edge]
+        cur_idx += 1
+        
+    return new_edge_index, new_norm
+
+def norm_contruction(edge_index,edge_weight, TYPE='V2V'):
+    if TYPE == 'V2V':
+        edge_index, edge_weight = gcn_norm(edge_index, edge_weight, add_self_loops=True)
+    return edge_index, edge_weight
+
+def process_data(args):
+    # load data
+    relations, edges, total_relations, total_edges, user_index, poi_index = load_data(args.city)
+    all_relations = []
+    
+    test_data = {}
+    train_data = {}
+    test_friendship_index = set(np.random.choice(len(relations['friendship']), int(len(relations['friendship']) * (1-args.train_ratio)), replace=False))
+
+    for relation in relations.keys():
+        if relation == 'friendship':
+            test_data[relation] = []
+            train_data[relation] = []
+            for i in range(len(relations[relation])):
+                if i in test_friendship_index:
+                    test_data[relation].append(relations[relation][i])
+                else:
+                    train_data[relation].append(relations[relation][i])
+                    all_relations.append(relations[relation][i])
+        elif relation not in args.ablation_list:
+            for idx in relations[relation].keys():
+                all_relations.append(relations[relation][idx])
+    # combine all relations
+
+    v_index = []
+    e_index = []
+    count = 0
+    for edge in edges.keys():
+        if edge == 'friendship':
+            for i in range(len(edges[edge])):
+                if i not in test_friendship_index:
+                    # all_edges.append(train_data[edge][i])
+                    for v in edges[edge][i]:
+                        v_index.append(v)
+                        e_index.append(count)
+                    count += 1
+        elif edge not in args.ablation_list:
+            for idx in edges[edge].keys():
+                # all_edges.append(edges[edge][idx])
+                for v in edges[edge][idx]:
+                    v_index.append(v)
+                    e_index.append(count)
+                count += 1
+    # combine all edges
+    v_e = np.array([v_index, e_index])
+    v_e = v_e.T[np.lexsort(v_e[::-1, :])].T
+    
+    expanded_edges, edge_weight = ConstructV2V(v_e)
+    expanded_edges = torch.LongTensor(expanded_edges)
+    edge_weight = torch.FloatTensor(edge_weight)
+    expanded_edges, edge_weight = norm_contruction(expanded_edges, edge_weight, TYPE='V2V')
+
+    return all_relations, expanded_edges, edge_weight, test_data, train_data, user_index, poi_index
+
