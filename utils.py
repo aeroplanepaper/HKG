@@ -1,7 +1,9 @@
+import math
 import random
-import torch
-import torch.nn as nn
 
+import numpy as np
+import torch
+from torch.nn import functional as F
 
 def random_dic(dicts):
     dict_key_ls = list(dicts.keys())
@@ -133,4 +135,56 @@ def test_topK_friendship(v, user_index, friendship, friendship_all, topK=10):
 
     return topK
 
-    
+def sample_negative_relation_batch(pos_batch, entity_num, neg_ratio, max_arity):
+    relation_type = [relation[0] for relation in pos_batch]
+    relation = [list(relation[1]) for relation in pos_batch]
+    relation = [np.array([relation_type[i]] + relation[i] + [0]) for i in range(len(relation))]
+    # pos_batch = np.append(relation, np.zeros((len(relation), 1)), axis=1).astype("int")
+    arities = [len(r) - 2 for r in relation]
+
+    neg_batch = []
+    for i, c in enumerate(relation):
+        c = np.array(list(c) + [entity_num] * (max_arity - arities[i]))
+        neg_batch.append(neg_each(np.repeat([c], neg_ratio * arities[i] + 1, axis=0), arities[i], entity_num, neg_ratio))
+    labels = []
+    batch = []
+    arities_new = []
+    for i in range(len(neg_batch)):
+        labels.append(1)
+        labels = labels + [0] * (neg_ratio * arities[i])
+        arities_new = arities_new + [arities[i]] * (neg_ratio * arities[i] + 1)
+        # labels.append([1] + [0] * (neg_ratio * arities[i]))
+        for j in range(len(neg_batch[i])):
+            batch.append(neg_batch[i][j][:-1])
+    labels = np.array(labels)
+    batch = np.array(batch)
+
+    ms = np.zeros((len(batch), max_arity))
+    bs = np.ones((len(batch), max_arity))
+    for i in range(len(batch)):
+        ms[i][0:arities_new[i]] = 1
+        bs[i][0:arities_new[i]] = 0
+    return batch, labels, ms, bs
+
+def neg_each(arr, arity, entity_num, neg_ratio):
+    for a in range(arity):
+        arr[a* neg_ratio + 1:(a + 1) * neg_ratio + 1, a + 1] = np.random.randint(low=1, high=entity_num, size=neg_ratio)
+    return arr
+
+def padd(a, max_length):
+    b = F.pad(a, (0, max_length - len(a)), 'constant', -math.inf)
+    return b
+
+def decompose_predictions(targets, predictions, max_length):
+    positive_indices = np.where(targets > 0)[0]
+    seq = []
+    for ind, val in enumerate(positive_indices):
+        if(ind == len(positive_indices)-1):
+            seq.append(padd(predictions[val:], max_length))
+        else:
+            seq.append(padd(predictions[val:positive_indices[ind + 1]], max_length))
+    return seq
+
+def padd_and_decompose(targets, predictions, max_length):
+    seq = decompose_predictions(targets, predictions, max_length)
+    return torch.stack(seq)

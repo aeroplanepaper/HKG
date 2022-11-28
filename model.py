@@ -13,14 +13,64 @@ from torch_geometric.utils import softmax
 model_hyperparam = {
     'HypE': {
         'in_channels': 1,
-        'out_channels': 6,
+        'out_channels': 3,
         'filt_h': 1,
         'filt_w': 1,
         'stride': 2,
         'hidden_drop': 0.2,
-        'max_arity': 7,
+    },
+
+    'HSimplE': {
+        'hidden_drop': 0.2,
     }
 }
+
+
+class HSimplE(nn.Module):
+    def __init__(self, args):
+        super(HSimplE, self).__init__()
+        self.emb_dim = args.emb_dim
+        self.max_arity = 6
+
+        self.hidden_drop_rate = model_hyperparam[args.kg_model]["hidden_drop"]
+
+        self.hidden_drop = torch.nn.Dropout(self.hidden_drop_rate)
+
+
+    def shift(self, v, sh):
+        y = torch.cat((v[:, sh:], v[:, :sh]), dim=1)
+        return y
+
+    # def forward(self, r_idx, e1_idx, e2_idx, e3_idx, e4_idx, e5_idx, e6_idx):
+    #     r = self.R(r_idx)
+    #     e1 = self.E(e1_idx)
+    #     e2 = self.shift(self.E(e2_idx), int(1 * self.emb_dim/self.max_arity))
+    #     e3 = self.shift(self.E(e3_idx), int(2 * self.emb_dim/self.max_arity))
+    #     e4 = self.shift(self.E(e4_idx), int(3 * self.emb_dim/self.max_arity))
+    #     e5 = self.shift(self.E(e5_idx), int(4 * self.emb_dim/self.max_arity))
+    #     e6 = self.shift(self.E(e6_idx), int(5 * self.emb_dim/self.max_arity))
+    #     x = r * e1 * e2 * e3 * e4 * e5 * e6
+    #     x = self.hidden_drop(x)
+    #     x = torch.sum(x, dim=1)
+    #     return x
+
+    def forward(self, r, E, ms, bs):
+        '''
+        r: relation embedding
+        E: entity embedding (each row is an entity embedding, containing |r| rows)
+        '''
+
+        for i in range(E.shape[1]):
+            e = self.shift(E[:,i], int((i + 1) * self.emb_dim/self.max_arity)) * ms[:, i].view(-1, 1) + bs[:, i].view(-1, 1)
+            if i == 0:
+                x = e
+            else:
+                x = x * e
+        x = x * r
+        x = self.hidden_drop(x)
+        x = torch.sum(x, dim=1)
+        return x
+
 
 
 class HypE(torch.nn.Module):
@@ -33,7 +83,7 @@ class HypE(torch.nn.Module):
         self.stride = model_hyperparam[args.kg_model]["stride"]
         self.hidden_drop_rate = model_hyperparam[args.kg_model]["hidden_drop"]
         self.emb_dim = args.emb_dim
-        self.max_arity = model_hyperparam[args.kg_model]["max_arity"]
+        self.max_arity = args.arity
 
         self.bn0 = torch.nn.BatchNorm2d(self.in_channels)
         self.inp_drop = torch.nn.Dropout(0.2)
@@ -46,11 +96,13 @@ class HypE(torch.nn.Module):
         self.fc = torch.nn.Linear(fc_length, self.emb_dim)
         self.device = torch.device('cuda:{}'.format(args.cuda) if torch.cuda.is_available() else 'cpu')
 
+        self.one_hot_target = [(pos == torch.arange(self.max_arity).reshape(self.max_arity)).float().to(self.device) for pos in range(self.max_arity)]
+
         # size of the convolution filters outputted by the hypernetwork
         fc1_length = self.in_channels*self.out_channels*self.filt_h*self.filt_w
         # Hypernetwork
-        self.fc1 = torch.nn.Linear(self.emb_dim + self.max_arity + 1, fc1_length)
-        self.fc2 = torch.nn.Linear(self.max_arity + 1, fc1_length)
+        # self.fc1 = torch.nn.Linear(self.emb_dim + self.max_arity + 1, fc1_length)
+        self.fc2 = torch.nn.Linear(self.max_arity, fc1_length)
 
 
 
@@ -60,8 +112,9 @@ class HypE(torch.nn.Module):
         # r = self.R(r_idx)
         x = e
         x = self.inp_drop(x)
-        one_hot_target = (pos == torch.arange(self.max_arity + 1).reshape(self.max_arity + 1)).float().to(self.device)
-        poses = one_hot_target.repeat(r.shape[0]).view(-1, self.max_arity + 1)
+        # one_hot_target = (pos == torch.arange(self.max_arity + 1).reshape(self.max_arity + 1)).float().to(self.device)
+        one_hot_target = self.one_hot_target[pos]
+        poses = one_hot_target.repeat(r.shape[0]).view(-1, self.max_arity)
         one_hot_target.requires_grad = False
         poses.requires_grad = False
         k = self.fc2(poses)
@@ -77,20 +130,18 @@ class HypE(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def forward(self, r, E):
+    def forward(self, r, E, ms, bs):
         '''
         r: relation embedding
         E: entity embedding (each row is an entity embedding, containing |r| rows)
         '''
-        # r = self.R(r_idx)
 
         for i in range(E.shape[1]):
-            e = self.convolve(r, E[:,i], i).view(-1, 1)
+            e = self.convolve(r, E[:,i], i) * ms[:, i].view(-1, 1) + bs[:, i].view(-1, 1)
             if i == 0:
                 x = e
             else:
                 x = x * e
-
         x = x * r
         x = self.hidden_drop(x)
         x = torch.sum(x, dim=1)
@@ -191,7 +242,7 @@ class CEGCN(MessagePassing):
         for layer in self.convs:
             layer.reset_parameters()
         for normalization in self.normalizations:
-            if not (normalization.__class__.__name__ is 'Identity'):
+            if normalization.__class__.__name__ != 'Identity':
                 normalization.reset_parameters()
 
     def forward(self, x, edges, edge_weight, training=True):
@@ -211,7 +262,8 @@ class CEGCN(MessagePassing):
 class HKGAT(nn.Module):
     def __init__(self, args, edges, relations, edge_weight):
         super(HKGAT, self).__init__()
-        self.HKG = HypE(args)
+        self.HKG = HypE(args) if args.model == 'HypE' else HSimplE(args)
+
         self.GAT = CEGAT(in_dim=args.emb_dim,
                       hid_dim=args.hid_dim,  # Use args.enc_hidden to control the number of hidden layers
                       out_dim=args.emb_dim,
@@ -228,15 +280,16 @@ class HKGAT(nn.Module):
         #                 dropout=args.dropout,
         #                 Normalization=args.normalization)
 
+        self.entity_num = args.entity_num
 
-        self.E = nn.Embedding(args.entity_num, args.emb_dim, padding_idx=0)
+        self.E = nn.Embedding(args.entity_num + 1, args.emb_dim, padding_idx=0)
         self.R = nn.Embedding(args.relation_num, args.rel_emb_dim, padding_idx=0)
 
         # self.E.weight.data[0] = torch.ones(args.emb_dim)
         # self.R.weight.data[0] = torch.ones(args.rel_emb_dim)
         # xavier_uniform_(self.E.weight.data[1:])
         # xavier_uniform_(self.R.weight.data[1:])
-        self.E.weight.data = torch.randn(args.entity_num, args.emb_dim)
+        self.E.weight.data = torch.randn(args.entity_num + 1, args.emb_dim)
         self.R.weight.data = torch.randn(args.relation_num, args.rel_emb_dim)
 
 
@@ -245,20 +298,28 @@ class HKGAT(nn.Module):
         self.edge_weight = edge_weight
 
 
-    def forward(self, index, mode):
+    def forward(self, index, mode, ms=None, bs=None):
         if mode == 'train_hkg':
-            r_idx = self.relations[index]['relation']
-            e_idx = self.relations[index]['entity']
-            r = self.R(r_idx)
-            E = self.E(e_idx)
-            return self.HKG(r,E)
+            # r_idx = self.relations[index]['relation']
+            r_index = index[:, 0]
+            e_index = index[:, 1:]
+            # e_idx = self.relations[index]['entity']
+            r = self.R(r_index)
+            E = self.E(e_index)
+
+            return self.HKG(r, E, ms, bs)
         elif mode == 'train_gat':
             # print(self.E.weight[0])
             # return self.GAT(x, self.edges, self.edge_weight, training=True)
-            return self.GAT(self.E.weight, self.edges, self.edge_weight, training=True)
+            # self.E.requires_grad_(False)
+            # self.R.requires_grad_(False)
+            # print(self.E.weight[0])
+            return self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=True)
         elif mode == 'predict':
             # return self.GAT(x, self.edges, self.edge_weight, training=False)
-            return self.GAT(self.E.weight, self.edges, self.edge_weight, training=False)
+            # self.E.requires_grad_(False)
+            # self.R.requires_grad_(False)
+            return self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
             # return self.GAT(self.E.weight, self.edges, self.edge_weight,training=False)
 
 

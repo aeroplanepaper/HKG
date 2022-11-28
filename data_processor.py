@@ -1,3 +1,4 @@
+import copy
 import pickle
 
 import numpy as np
@@ -508,9 +509,10 @@ def load_data(city):
         hash_6 = geohash.encode(lat, lng, precision=6)
         return hash_4, hash_5, hash_6
 
-    def extract_relations(city, check_ins:pd.DataFrame, friend, user_trajectory,
+    def extract_relations(city, check_ins:pd.DataFrame, friend,
                       time_hour_dic, time_month_dic, poi_details, all_categories):
         relations = {}
+        hyper_edges = {}
         total_relation = 0
         check_in_relation = {}
         friendship_relation = {}
@@ -526,12 +528,14 @@ def load_data(city):
         for i in range(len(check_ins)):
             check_in_relation[i] = check_ins[i]
         relations['check_in'] = check_in_relation
+        hyper_edges['check_in'] = check_in_relation
         # type 1 : check in
         total_relation += len(check_in_relation)
 
         for i in range(len(friend)):
             friendship_relation[i] = friend[i]
         relations['friendship'] = friendship_relation
+        hyper_edges['friendship'] = friendship_relation
         # type 2 : friendship
         total_relation += len(friendship_relation)
 
@@ -580,7 +584,7 @@ def load_data(city):
         relations['poi_price'] = poi_price_relation
 
         total_relation += count * 5
-        return relations, total_relation
+        return relations, hyper_edges, total_relation
 
 
     def load_all(city):
@@ -597,11 +601,11 @@ def load_data(city):
             time_month_dic, geo_relations, current_index, user_index, poi_index = process_city_data(city, check_in, poi_data, users, venues, friend)
 
         poi_details, all_categories = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
-        relations, total_relation_num = extract_relations(city, check_in_processed, friend_processed, user_trajectory_processed,
+        relations, hyper_edges, total_relation_num = extract_relations(city, check_in_processed, friend_processed,
                                       time_hour_dic, time_month_dic, poi_details, all_categories)
         relations['poi_geo'] = geo_relations
 
-        hyper_edges = relations
+        # hyper_edges = copy.deepcopy(relations)
         hyper_edges['trajectory'] = user_trajectory_processed
 
         total_edge_num = total_relation_num + len(user_trajectory_processed)
@@ -614,7 +618,7 @@ def load_data(city):
 
     #load from file
     try:
-        # raise Exception
+        raise Exception
         relations = pickle.load(open('./data/processed/'+city+'/relations.pkl', 'rb'))
         hyper_edges = pickle.load(open('./data/processed/'+city+'/hyper_edges.pkl', 'rb'))
         total_relation_num = pickle.load(open('./data/processed/'+city+'/total_relation_num.pkl', 'rb'))
@@ -682,8 +686,10 @@ def process_data(args):
     train_data = {}
     test_friendship_index = set(np.random.choice(len(relations['friendship']), int(len(relations['friendship']) * (1-args.train_ratio)), replace=False))
 
+    relation_count = 0
     for relation in relations.keys():
         if relation == 'friendship':
+            friendship_relation_idx = relation_count
             test_data[relation] = []
             train_data[relation] = []
             for i in range(len(relations[relation])):
@@ -691,10 +697,11 @@ def process_data(args):
                     test_data[relation].append(relations[relation][i])
                 else:
                     train_data[relation].append(relations[relation][i])
-                    all_relations.append(relations[relation][i])
+                    all_relations.append([relation_count, relations[relation][i]])
         elif relation not in args.ablation_list:
             for idx in relations[relation].keys():
-                all_relations.append(relations[relation][idx])
+                all_relations.append([relation_count, relations[relation][idx]])
+        relation_count += 1
     # combine all relations
 
     v_index = []
@@ -709,7 +716,7 @@ def process_data(args):
                         v_index.append(v)
                         e_index.append(count)
                     count += 1
-        elif edge not in args.ablation_list:
+        else:
             for idx in edges[edge].keys():
                 # all_edges.append(edges[edge][idx])
                 for v in edges[edge][idx]:
@@ -725,5 +732,5 @@ def process_data(args):
     edge_weight = torch.FloatTensor(edge_weight)
     expanded_edges, edge_weight = norm_contruction(expanded_edges, edge_weight, TYPE='V2V')
 
-    return all_relations, expanded_edges, edge_weight, test_data, train_data, user_index, poi_index
+    return all_relations, relation_count, friendship_relation_idx, expanded_edges, edge_weight, test_data, train_data, user_index, poi_index
 
