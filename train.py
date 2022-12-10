@@ -147,9 +147,9 @@ def train(args):
     device = torch.device('cuda:{}'.format(args.cuda) if torch.cuda.is_available() else 'cpu')
 
 
-    # all_relations = [[relation[0] - 1, relation[1]] for relation in all_relations if relation[0] != 0]
+    all_relations = [[relation[0] - 1, relation[1]] for relation in all_relations if relation[0] != 0]
 
-    inverse_relations = [[relation[0], (relation[1][1], relation[1][0])] for relation in all_relations if relation[0] == 1]
+    inverse_relations = [[relation[0], (relation[1][1], relation[1][0])] for relation in all_relations if relation[0] == 0]
     all_relations = all_relations + inverse_relations
 
     # with open('data/{}_data_ablation.pkl'.format(args.city), 'rb') as f:
@@ -417,7 +417,7 @@ def main():
 
     parser.add_argument('--runs', type=int, default=1, help='Number of runs')
 
-    parser.add_argument('--cuda', type=int, default=7, help='GPU ID')
+    parser.add_argument('--cuda', type=int, default=6, help='GPU ID')
     parser.add_argument('--gat_train_iter', type=int, default=2000, help='Number of GAT training iterations')
 
     # KG parameters
@@ -425,15 +425,15 @@ def main():
                         help='KG model, choices=[TransE, DistMult, ComplEx, HypE, HSimplE]')
     parser.add_argument('--kg_lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--neg_ratio', type=int, default=10, help='Negative ratio')
-    parser.add_argument('--num_epochs', type=int, default=200 , help='Number of epochs')
-    parser.add_argument('--kg_batch_size', type=int, default=1024, help='KG Batch size')
-    parser.add_argument('--use_kg', type=bool, default=False, help='Use KG or not')
+    parser.add_argument('--num_epochs', type=int, default=100 , help='Number of epochs')
+    parser.add_argument('--kg_batch_size', type=int, default=512, help='KG Batch size')
+    parser.add_argument('--use_kg', type=bool, default=True, help='Use KG or not')
 
     # GAT parameters
-    parser.add_argument('--gat_model', type=str, default='HCHA',
+    parser.add_argument('--gat_model', type=str, default='CEGAT',
                         help='GAT model, choices=[HCHA, CEGAT, CEGCN]')
     parser.add_argument('--gat_batch_size', type=int, default=512, help='GAT Batch size')
-    parser.add_argument('--gat_lr', type=float, default=0.001, help='Learning rate')
+    parser.add_argument('--gat_lr', type=float, default=0.00001, help='Learning rate')
     parser.add_argument('--gat_weight_decay', type=float, default=0.0001, help='Weight decay')
     parser.add_argument('--emb_dim', type=int, default=256, help='Embedding dimension')
     parser.add_argument('--rel_emb_dim', type=int, default=256, help='Relation embedding dimension')

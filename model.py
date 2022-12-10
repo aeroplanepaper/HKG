@@ -401,9 +401,9 @@ class HKGAT(nn.Module):
             # poi_emb = self.time_encoder_poi(poi_emb)
             # poi_emb = x[poi]
             poi_emb = x[self.poi_index]
-            # norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+            norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
             # similarity = F.cosine_similarity(user_emb, poi_emb, dim=1)
-            similarity = torch.mm(user_emb, poi_emb.t())
+            similarity = torch.mm(user_emb, poi_emb.t()) / norm
             return similarity
 
         elif mode == 'test_gat_check_in':
@@ -416,9 +416,9 @@ class HKGAT(nn.Module):
             # user_emb = self.time_encoder_user(user_emb)
             user_emb = x[user] + x[time1] + x[time2]
             poi_emb = x[self.poi_index]
-            # norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+            norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
 
-            similarity = torch.matmul(user_emb, poi_emb.t())
+            similarity = torch.matmul(user_emb, poi_emb.t()) / norm
 
             return similarity
             #
