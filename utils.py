@@ -82,6 +82,44 @@ def negative_sample_friendship_train(friendship, friendship_all,user_index, samp
 
     return friendship_data, labels
 
+def negative_sample_check_in_train(check_ins, check_in_all, poi_index, time1_index, time2_index, sample_ratio=1):
+
+    conflict = set(check_in_all)
+    neg_samples = []
+    labels = [1] * len(check_ins)
+
+    for check_in in check_ins:
+        for k in range(0, sample_ratio):
+            poi = random.randint(poi_index['start'], poi_index['end'])
+            time1 = random.randint(time1_index['start'], time1_index['end'])
+            time2 = random.randint(time2_index['start'], time2_index['end'])
+
+            while (check_in[0], check_in[1], check_in[2], poi) in conflict:
+                poi = random.randint(poi_index['start'], poi_index['end'])
+
+            neg_samples.append([check_in[0], check_in[1], check_in[2], poi])
+
+            while (check_in[0], check_in[1], time1, check_in[3]) in conflict:
+                time1 = random.randint(time1_index['start'], time1_index['end'])
+
+            neg_samples.append([check_in[0], check_in[1], time1, check_in[3]])
+
+            while (check_in[0], time2, check_in[2], check_in[3]) in conflict:
+                time2 = random.randint(time2_index['start'], time2_index['end'])
+
+            neg_samples.append([check_in[0], time2, check_in[2], check_in[3]])
+
+            labels.append(0)
+            labels.append(0)
+            labels.append(0)
+
+    check_in_data = np.vstack((check_ins, neg_samples))
+
+    check_in_data = torch.LongTensor(check_in_data)
+    labels = torch.FloatTensor(labels)
+
+    return check_in_data, labels
+
 def test_topK_friendship(v, user_index, friendship, friendship_all, topK=10):
     user_number = user_index['end'] - user_index['start'] + 1
     v = v[0:user_number]
@@ -134,6 +172,21 @@ def test_topK_friendship(v, user_index, friendship, friendship_all, topK=10):
     topK = real / tot
 
     return topK
+
+def check_in_topK(predictions, labels, topK=10):
+    predictions = predictions.cpu().detach().numpy()
+    labels = labels.cpu().detach().numpy()
+    real = 0
+    tot = len(labels)
+    for i in range(0, len(labels)):
+        sim_i = predictions[i]
+        s = sim_i.argsort()[-topK:]
+        if labels[i] in s:
+            real += 1
+    topK = real / tot
+    return topK
+
+
 
 def sample_negative_relation_batch(pos_batch, entity_num, neg_ratio, max_arity):
     relation_type = [relation[0] for relation in pos_batch]
@@ -188,3 +241,6 @@ def decompose_predictions(targets, predictions, max_length):
 def padd_and_decompose(targets, predictions, max_length):
     seq = decompose_predictions(targets, predictions, max_length)
     return torch.stack(seq)
+
+
+

@@ -1,5 +1,6 @@
 import copy
 import pickle
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -479,7 +480,7 @@ def load_data(city):
         print("Total vertex number", current_index)
 
         print(city + ' side information number: ', len(all_side_info))
-        return all_side_info, all_category_level_two
+        return all_side_info, all_category_level_two, current_index
 
     def cut_all_count(all_count, cut_num):
         all_count = np.sort(all_count)
@@ -600,7 +601,7 @@ def load_data(city):
         check_in_processed, friend_processed, user_trajectory_processed, venues_dic, time_hour_dic, \
             time_month_dic, geo_relations, current_index, user_index, poi_index = process_city_data(city, check_in, poi_data, users, venues, friend)
 
-        poi_details, all_categories = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
+        poi_details, all_categories, total_nodes = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
         relations, hyper_edges, total_relation_num = extract_relations(city, check_in_processed, friend_processed,
                                       time_hour_dic, time_month_dic, poi_details, all_categories)
         relations['poi_geo'] = geo_relations
@@ -614,31 +615,33 @@ def load_data(city):
         print('Total edge number: ', total_edge_num)
         print('Total relation number:{}'.format(total_relation_num))
         print('load success')
-        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index, total_nodes
 
     #load from file
     try:
-        raise Exception
+        # raise Exception
         relations = pickle.load(open('./data/processed/'+city+'/relations.pkl', 'rb'))
         hyper_edges = pickle.load(open('./data/processed/'+city+'/hyper_edges.pkl', 'rb'))
         total_relation_num = pickle.load(open('./data/processed/'+city+'/total_relation_num.pkl', 'rb'))
         total_edge_num = pickle.load(open('./data/processed/'+city+'/total_edge_num.pkl', 'rb'))
         user_index = pickle.load(open('./data/processed/'+city+'/user_index.pkl', 'rb'))
         poi_index = pickle.load(open('./data/processed/'+city+'/poi_index.pkl', 'rb'))
+        total_nodes = pickle.load(open('./data/processed/'+city+'/total_nodes.pkl', 'rb'))
         print('load data from file success')
-        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index, total_nodes
     except:
         # print('load failed')
         print('load data from file failed, load from raw data')
-        relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index = load_all(city)
+        relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index, total_nodes = load_all(city)
         pickle.dump(relations, open('./data/processed/'+city+'/relations.pkl', 'wb'))
         pickle.dump(hyper_edges, open('./data/processed/'+city+'/hyper_edges.pkl', 'wb'))
         pickle.dump(total_relation_num, open('./data/processed/'+city+'/total_relation_num.pkl', 'wb'))
         pickle.dump(total_edge_num, open('./data/processed/'+city+'/total_edge_num.pkl', 'wb'))
         pickle.dump(user_index, open('./data/processed/'+city+'/user_index.pkl', 'wb'))
         pickle.dump(poi_index, open('./data/processed/'+city+'/poi_index.pkl', 'wb'))
+        pickle.dump(total_nodes, open('./data/processed/'+city+'/total_nodes.pkl', 'wb'))
         print('load data from raw data success')
-        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index
+        return relations, hyper_edges, total_relation_num, total_edge_num, user_index, poi_index, total_nodes
 
 def ConstructV2V(edge_index):
     # Assume edge_index = [V;E], sorted
@@ -677,23 +680,62 @@ def norm_contruction(edge_index,edge_weight, TYPE='V2V'):
         edge_index, edge_weight = gcn_norm(edge_index, edge_weight, add_self_loops=True)
     return edge_index, edge_weight
 
+# def add_selfloops(edge_index, entity_num, hyperedge_num):
+#     # update so we dont jump on some indices
+#     # Assume edge_index = [V;E]. If not, use ExtractV2E()
+#
+#
+#     hyperedge_appear_fre = Counter(edge_index[1])
+#     # store the nodes that already have self-loops
+#     skip_node_lst = []
+#     for edge in hyperedge_appear_fre:
+#         if hyperedge_appear_fre[edge] == 1:
+#             skip_node = edge_index[0][torch.where(
+#                 edge_index[1] == edge)[0].item()]
+#             if(skip_node in skip_node_lst):
+#                 continue
+#             skip_node_lst.append(skip_node.item())
+#
+#     new_edge_idx = edge_index[1].max() + 1
+#     new_edges = torch.zeros(
+#         (2, entity_num - len(skip_node_lst)), dtype=edge_index.dtype)
+#     tmp_count = 0
+#     for i in range(entity_num):
+#         if i not in skip_node_lst:
+#             new_edges[0][tmp_count] = i
+#             new_edges[1][tmp_count] = new_edge_idx
+#             new_edge_idx += 1
+#             tmp_count += 1
+#
+#     hyperedge_num = hyperedge_num + entity_num - len(skip_node_lst)
+#     edge_index = torch.cat((edge_index, new_edges), dim=1)
+#     # Sort along w.r.t. nodes
+#     _, sorted_idx = torch.sort(edge_index[0])
+#     edge_index = edge_index[:, sorted_idx].type(torch.LongTensor)
+#     return edge_index, hyperedge_num
+
+
 def process_data(args):
     # load data
-    relations, edges, total_relations, total_edges, user_index, poi_index = load_data(args.city)
+    relations, edges, total_relations, total_edges, user_index, poi_index, total_nodes = load_data(args.city)
     all_relations = []
+    del edges['trajectory']
     
     test_data = {}
     train_data = {}
-    test_friendship_index = set(np.random.choice(len(relations['friendship']), int(len(relations['friendship']) * (1-args.train_ratio)), replace=False))
+    test_index = {}
+    test_index['friendship'] = set(np.random.choice(len(relations['friendship']), int(len(relations['friendship']) * (1-args.train_ratio)), replace=False))
+    test_index['check_in'] = set(np.random.choice(len(relations['check_in']), int(len(relations['check_in']) * (1-args.train_ratio)), replace=False))
+
 
     relation_count = 0
     for relation in relations.keys():
-        if relation == 'friendship':
+        if relation == 'friendship' or relation == 'check_in':
             friendship_relation_idx = relation_count
             test_data[relation] = []
             train_data[relation] = []
             for i in range(len(relations[relation])):
-                if i in test_friendship_index:
+                if i in test_index[relation]:
                     test_data[relation].append(relations[relation][i])
                 else:
                     train_data[relation].append(relations[relation][i])
@@ -708,9 +750,9 @@ def process_data(args):
     e_index = []
     count = 0
     for edge in edges.keys():
-        if edge == 'friendship':
+        if edge == 'friendship' or edge == 'check_in':
             for i in range(len(edges[edge])):
-                if i not in test_friendship_index:
+                if i not in test_index[edge]:
                     # all_edges.append(train_data[edge][i])
                     for v in edges[edge][i]:
                         v_index.append(v)
@@ -724,13 +766,12 @@ def process_data(args):
                     e_index.append(count)
                 count += 1
     # combine all edges
+
+    hyperedge_num = count + 1
+    # hypernode_num = np.array(all_relations)
+
     v_e = np.array([v_index, e_index])
     v_e = v_e.T[np.lexsort(v_e[::-1, :])].T
-    
-    expanded_edges, edge_weight = ConstructV2V(v_e)
-    expanded_edges = torch.LongTensor(expanded_edges)
-    edge_weight = torch.FloatTensor(edge_weight)
-    expanded_edges, edge_weight = norm_contruction(expanded_edges, edge_weight, TYPE='V2V')
 
-    return all_relations, relation_count, friendship_relation_idx, expanded_edges, edge_weight, test_data, train_data, user_index, poi_index
+    return all_relations, relation_count, friendship_relation_idx, v_e, test_data, train_data, user_index, poi_index, hyperedge_num, total_nodes
 

@@ -7,7 +7,8 @@ import time
 import math
 
 from torch_geometric.nn.conv import MessagePassing, GCNConv, GATConv
-from torch_scatter import scatter
+from torch_geometric.nn import HypergraphConv
+from torch_scatter import scatter, scatter_add
 from torch_geometric.utils import softmax
 
 model_hyperparam = {
@@ -25,6 +26,16 @@ model_hyperparam = {
     }
 }
 
+
+def glorot(tensor):
+    if tensor is not None:
+        stdv = math.sqrt(6.0 / (tensor.size(-2) + tensor.size(-1)))
+        tensor.data.uniform_(-stdv, stdv)
+
+
+def zeros(tensor):
+    if tensor is not None:
+        tensor.data.fill_(0)
 
 class HSimplE(nn.Module):
     def __init__(self, args):
@@ -256,71 +267,165 @@ class CEGCN(MessagePassing):
             x = self.normalizations[i](x)
             x = F.dropout(x, p=self.dropout, training=training)
         x = self.convs[-1](x, edges)
+        return
+
+
+class HCHA(nn.Module):
+    """
+    This model is proposed by "Hypergraph Convolution and Hypergraph Attention" (in short HCHA) and its convolutional layer
+    is implemented in pyg.
+    """
+
+    def __init__(self, args):
+        super(HCHA, self).__init__()
+
+        self.num_layers = args.num_layers
+        self.dropout = args.dropout  # Note that default is 0.6
+
+#         Note that add dropout to attention is default in the original paper
+        self.convs = nn.ModuleList()
+        self.convs.append(HypergraphConv(in_channels=args.emb_dim, out_channels=args.hid_dim,
+                                            heads=args.heads, dropout=args.dropout, use_attention=args.use_attention))
+
+        for _ in range(self.num_layers-2):
+            self.convs.append(HypergraphConv(in_channels=args.hid_dim, out_channels=args.hid_dim,
+                                            heads=args.heads, dropout=args.dropout, use_attention=args.use_attention))
+
+        self.convs.append(HypergraphConv(in_channels=args.hid_dim, out_channels=args.emb_dim,
+                                            heads=args.heads, dropout=args.dropout, use_attention=args.use_attention))
+
+    def reset_parameters(self):
+        for conv in self.convs:
+            conv.reset_parameters()
+
+    def forward(self, x, edges, edge_weight, training=True):
+
+        for i, conv in enumerate(self.convs[:-1]):
+
+            x = F.elu(conv(x=x, hyperedge_index=edges))
+            x = F.dropout(x, p=self.dropout, training=training)
+
+#         x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x=x, hyperedge_index=edges)
+
         return x
 
 
 class HKGAT(nn.Module):
     def __init__(self, args, edges, relations, edge_weight):
         super(HKGAT, self).__init__()
-        self.HKG = HypE(args) if args.model == 'HypE' else HSimplE(args)
+        self.gat_model = args.gat_model
+        self.HKG = HypE(args) if args.kg_model == 'HypE' else HSimplE(args)
 
-        self.GAT = CEGAT(in_dim=args.emb_dim,
-                      hid_dim=args.hid_dim,  # Use args.enc_hidden to control the number of hidden layers
-                      out_dim=args.emb_dim,
-                      num_layers=args.num_layers,
-                      heads=args.heads,
-                      output_heads=args.output_heads,
-                      dropout=args.dropout,
-                      Normalization=args.normalization)
-
-        # self.GAT = CEGCN(in_dim=args.emb_dim,
-        #                 hid_dim=args.hid_dim,  # Use args.enc_hidden to control the number of hidden layers
-        #                 out_dim=args.emb_dim,
-        #                 num_layers=args.num_layers,
-        #                 dropout=args.dropout,
-        #                 Normalization=args.normalization)
+        if args.gat_model == 'CEGAT':
+            self.GAT = CEGAT(in_dim=args.emb_dim,
+                          hid_dim=args.hid_dim,  # Use args.enc_hidden to control the number of hidden layers
+                          out_dim=args.emb_dim,
+                          num_layers=args.num_layers,
+                          heads=args.heads,
+                          output_heads=args.output_heads,
+                          dropout=args.dropout,
+                          Normalization=args.normalization)
+        elif args.gat_model == 'CEGCN':
+            self.GAT = CEGCN(in_dim=args.emb_dim,
+                            hid_dim=args.hid_dim,  # Use args.enc_hidden to control the number of hidden layers
+                            out_dim=args.emb_dim,
+                            num_layers=args.num_layers,
+                            dropout=args.dropout,
+                            Normalization=args.normalization)
+        elif args.gat_model == 'HCHA':
+            self.GAT = HCHA(args)
 
         self.entity_num = args.entity_num
 
         self.E = nn.Embedding(args.entity_num + 1, args.emb_dim, padding_idx=0)
         self.R = nn.Embedding(args.relation_num, args.rel_emb_dim, padding_idx=0)
 
-        # self.E.weight.data[0] = torch.ones(args.emb_dim)
-        # self.R.weight.data[0] = torch.ones(args.rel_emb_dim)
-        # xavier_uniform_(self.E.weight.data[1:])
-        # xavier_uniform_(self.R.weight.data[1:])
+        # if args.task == 'check_in':
+        #     self.time_encoder_user = nn.Sequential(
+        #         nn.Linear(2 * args.emb_dim, args.emb_dim),
+        #         # nn.ReLU(),
+        #         # nn.Linear(3 * args.num_poi, args.num_poi),
+        #     )
+
+            # self.time_encoder_poi = nn.Sequential(
+            #     nn.Linear(3 * args.emb_dim, args.emb_dim),
+            #     # nn.ReLU(),
+            #     # nn.Linear(3 * args.num_poi, args.num_poi),
+            # )
+
+
         self.E.weight.data = torch.randn(args.entity_num + 1, args.emb_dim)
         self.R.weight.data = torch.randn(args.relation_num, args.rel_emb_dim)
-
+        # nn.init.xavier_uniform_(self.E.weight.data)
+        # nn.init.xavier_uniform_(self.R.weight.data)
+        self.E_GNN = nn.Embedding(args.entity_num + 1, args.emb_dim, padding_idx=0)
 
         self.edges = edges
         self.relations = relations # Contains all relations in the dataset
         self.edge_weight = edge_weight
+        self.poi_index = torch.range((args.poi_index['start']), (args.poi_index['end']), 1).long()
 
 
     def forward(self, index, mode, ms=None, bs=None):
-        if mode == 'train_hkg':
-            # r_idx = self.relations[index]['relation']
+        if mode == 'kg':
             r_index = index[:, 0]
             e_index = index[:, 1:]
-            # e_idx = self.relations[index]['entity']
             r = self.R(r_index)
             E = self.E(e_index)
 
             return self.HKG(r, E, ms, bs)
-        elif mode == 'train_gat':
+        elif mode == 'train_gat_friendship':
             # print(self.E.weight[0])
             # return self.GAT(x, self.edges, self.edge_weight, training=True)
             # self.E.requires_grad_(False)
             # self.R.requires_grad_(False)
             # print(self.E.weight[0])
             return self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=True)
-        elif mode == 'predict':
+
+        elif mode == 'predict_friendship':
             # return self.GAT(x, self.edges, self.edge_weight, training=False)
             # self.E.requires_grad_(False)
             # self.R.requires_grad_(False)
             return self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
-            # return self.GAT(self.E.weight, self.edges, self.edge_weight,training=False)
+        elif mode == 'train_gat_check_in':
+            user = index[:, 0]
+            time1 = index[:, 1]
+            time2 = index[:, 2]
+            # poi = index[:, 3]
+            x = self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
+            # user_emb = torch.cat((x[user], x[time1] + x[time2]), dim=1)
+            # user_emb = self.time_encoder_user(user_emb)
+            user_emb = x[user] + x[time1] + x[time2]
+            # poi_emb = torch.cat((x[self.poi_index], x[time1], x[time2]), dim=1)
+            # poi_emb = self.time_encoder_poi(poi_emb)
+            # poi_emb = x[poi]
+            poi_emb = x[self.poi_index]
+            # norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+            # similarity = F.cosine_similarity(user_emb, poi_emb, dim=1)
+            similarity = torch.mm(user_emb, poi_emb.t())
+            return similarity
+
+        elif mode == 'test_gat_check_in':
+            user = index[:, 0]
+            time1 = index[:, 1]
+            time2 = index[:, 2]
+
+            x = self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
+            # user_emb = torch.cat((x[user], x[time1] + x[time2]), dim=1)
+            # user_emb = self.time_encoder_user(user_emb)
+            user_emb = x[user] + x[time1] + x[time2]
+            poi_emb = x[self.poi_index]
+            # norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+
+            similarity = torch.matmul(user_emb, poi_emb.t())
+
+            return similarity
+            #
+            # similarity = torch.matmul(user_emb, poi_emb.t()) / (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+            #
+            # return similarity
+
 
 
 
