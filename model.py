@@ -310,6 +310,26 @@ class HCHA(nn.Module):
 
         return x
 
+class Sequential_model(nn.Module):
+    def __init__(self, args):
+        super(Sequential_model, self).__init__()
+        self.num_layers = args.num_layers
+        self.dropout = args.dropout
+        self.encode_attn = nn.MultiheadAttention(args.emb_dim, args.heads, dropout=args.dropout)
+        self.transform = nn.Sequential(nn.Linear(args.emb_dim, args.hid_dim),
+                                       nn.ReLU(),
+                                       nn.Linear(args.hid_dim, args.emb_dim))
+        self.decode_attn = nn.MultiheadAttention(args.emb_dim, args.heads, dropout=args.dropout)
+
+    def forward(self, check_ins, mask, poi_emb, training=True):
+        check_ins = check_ins.permute(1, 0, 2)
+        poi_emb = poi_emb.permute(1, 0, 2)
+        check_ins = self.encode_attn(check_ins, check_ins, check_ins, attn_mask=mask)[0]
+        check_ins = self.transform(check_ins)
+        interests = self.decode_attn(poi_emb, check_ins, check_ins)[0]
+        interests = F.dropout(interests, p=self.dropout, training=training)
+        return interests
+
 
 class HKGAT(nn.Module):
     def __init__(self, args, edges, relations, edge_weight):
@@ -336,23 +356,29 @@ class HKGAT(nn.Module):
         elif args.gat_model == 'HCHA':
             self.GAT = HCHA(args)
 
+        self.sequential_model = Sequential_model(args)
+
         self.entity_num = args.entity_num
 
         self.E = nn.Embedding(args.entity_num + 1, args.emb_dim, padding_idx=0)
         self.R = nn.Embedding(args.relation_num, args.rel_emb_dim, padding_idx=0)
 
+        self.check_in_encoder = nn.Sequential(
+            nn.Linear(7 * args.emb_dim, args.emb_dim)
+        )
+
         # if args.task == 'check_in':
         #     self.time_encoder_user = nn.Sequential(
-        #         nn.Linear(2 * args.emb_dim, args.emb_dim),
-        #         # nn.ReLU(),
-        #         # nn.Linear(3 * args.num_poi, args.num_poi),
-        #     )
-
-            # self.time_encoder_poi = nn.Sequential(
-            #     nn.Linear(3 * args.emb_dim, args.emb_dim),
-            #     # nn.ReLU(),
-            #     # nn.Linear(3 * args.num_poi, args.num_poi),
+        #         nn.Linear(3 * args.emb_dim, args.emb_dim),
+        #         nn.ReLU(),
+        #         nn.Linear(3 * args.num_poi, args.num_poi),
             # )
+
+        self.time_encoder_poi = nn.Sequential(
+            nn.Linear(3 * args.emb_dim, args.emb_dim),
+        #     # nn.ReLU(),
+        #     # nn.Linear(3 * args.num_poi, args.num_poi),
+        )
 
 
         self.E.weight.data = torch.randn(args.entity_num + 1, args.emb_dim)
@@ -360,7 +386,7 @@ class HKGAT(nn.Module):
         # nn.init.xavier_uniform_(self.E.weight.data)
         # nn.init.xavier_uniform_(self.R.weight.data)
         self.E_GNN = nn.Embedding(args.entity_num + 1, args.emb_dim, padding_idx=0)
-
+        self.E_GNN.weight.data = torch.randn(args.entity_num + 1, args.emb_dim)
         self.edges = edges
         self.relations = relations # Contains all relations in the dataset
         self.edge_weight = edge_weight
@@ -389,36 +415,47 @@ class HKGAT(nn.Module):
             # self.R.requires_grad_(False)
             return self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
         elif mode == 'train_gat_check_in':
-            user = index[:, 0]
-            time1 = index[:, 1]
-            time2 = index[:, 2]
+            # user = index[:, 0]
+            last_check_in = index[:, -1, :]
+            labels = last_check_in[:, 1]
+            time1 = last_check_in[:, 4]
+            time2 = last_check_in[:, 5]
+            time3 = last_check_in[:, 6]
+
+            index = index[:, :-1,:]
+
             # poi = index[:, 3]
-            x = self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
-            # user_emb = torch.cat((x[user], x[time1] + x[time2]), dim=1)
-            # user_emb = self.time_encoder_user(user_emb)
-            user_emb = x[user] + x[time1] + x[time2]
-            # poi_emb = torch.cat((x[self.poi_index], x[time1], x[time2]), dim=1)
-            # poi_emb = self.time_encoder_poi(poi_emb)
-            # poi_emb = x[poi]
+            self.E.requires_grad_(False)
+            x = self.GAT(torch.cat((self.E.weight, self.E_GNN.weight)), self.edges, self.edge_weight, training=True)
+            # print(self.E.weight.data[1])
+            check_in_emb = torch.cat((x[index[:,:, 0]], x[index[:, :, 1]], x[index[:, :, 2]], x[index[:, :, 3]],
+                                      x[index[:, :, 4]], x[index[:, :, 5]], x[index[:, :, 6]]), dim=2)
+            check_in_emb = self.check_in_encoder(check_in_emb).squeeze()
             poi_emb = x[self.poi_index]
-            norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
-            # similarity = F.cosine_similarity(user_emb, poi_emb, dim=1)
-            similarity = torch.mm(user_emb, poi_emb.t()) / norm
-            return similarity
+            poi_emb = torch.concat((poi_emb, time1.repeat(poi_emb.shape[0]), time2.repeat(poi_emb.shape[0]), time3.repeat(poi_emb.shape[0])), dim=1)
+            poi_emb = self.time_encoder_poi(poi_emb)
+
+            interests = self.sequential_model(check_in_emb, ms, poi_emb, training=True)
+
+            similarity = torch.mm(interests, poi_emb.t())
+            return similarity, labels
 
         elif mode == 'test_gat_check_in':
             user = index[:, 0]
             time1 = index[:, 1]
             time2 = index[:, 2]
 
-            x = self.GAT(self.E.weight.data, self.edges, self.edge_weight, training=False)
+            x = self.GAT(torch.cat((self.E.weight, self.E_GNN.weight)), self.edges, self.edge_weight, training=False)
             # user_emb = torch.cat((x[user], x[time1] + x[time2]), dim=1)
             # user_emb = self.time_encoder_user(user_emb)
-            user_emb = x[user] + x[time1] + x[time2]
+            user_emb = torch.cat((x[user], x[time1], x[time2]), dim=1)
+            user_emb = self.time_encoder_user(user_emb)
+            # poi_emb = torch.cat((x[self.poi_index], x[time1], x[time2]), dim=1)
+            # poi_emb = self.time_encoder_user(poi_emb)
             poi_emb = x[self.poi_index]
-            norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
+            # norm = (user_emb.norm(dim=1, keepdim=True) * poi_emb.norm(dim=1, keepdim=True).t())
 
-            similarity = torch.matmul(user_emb, poi_emb.t()) / norm
+            similarity = torch.matmul(user_emb, poi_emb.t())
 
             return similarity
             #

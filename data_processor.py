@@ -217,10 +217,12 @@ def load_data(city):
         check_in['geohash_5'] = check_in_geohash_5
         check_in['geohash_6'] = check_in_geohash_6
 
-        # check_in['local_year'] = None
+        check_in['local_year'] = None
         check_in['local_month'] = None
         check_in['hour_period'] = None
-        # check_in_local_year = []
+        check_in['local_time'] = None
+        check_in_local_time = []
+        check_in_local_year = []
         check_in_local_month = []
         check_in_hour_period = []
 
@@ -229,9 +231,11 @@ def load_data(city):
             timezone_offset = row['Timezone_offset']
             struct_time = time.mktime(time.strptime(time_1, "%a %b %d  %H:%M:%S %Y")) + timezone_offset * 60
             localtime = time.localtime(struct_time)  # 返回元组
-            # check_in_local_year.append(localtime[0])
+            check_in_local_time.append(localtime)
+            check_in_local_year.append(localtime[0])
             check_in_local_month.append(localtime[1])
             check_in_hour_period.append(time_partition(localtime[6], localtime[3], localtime[4]))
+
 
         time_hour_dic = {}
         tot_hour_period = max(check_in_hour_period)
@@ -253,20 +257,31 @@ def load_data(city):
 
         current_index += tot_month
 
-        # check_in['local_year'] = check_in_local_year
+        time_year_dic = {}
+        tot_year = max(check_in_local_year) - min(check_in_local_year) + 1
+        min_year = min(check_in_local_year)
+        for i in range(len(check_in_local_year)):
+            if check_in_local_year[i] not in time_year_dic:
+                time_year_dic[check_in_local_year[i]] = check_in_local_year[i] + current_index - min_year
+            check_in_local_year[i] = time_year_dic[check_in_local_year[i]]
+
+        check_in['local_year'] = check_in_local_year
         check_in['local_month'] = check_in_local_month
         check_in['hour_period'] = check_in_hour_period
+        check_in['local_time'] = check_in_local_time
 
-        user_trajectory_index = {}
-        check_in = check_in.sort_values('users_index', ascending=True, inplace=False)
-        user_group = check_in.groupby("users_index")
-        user_group = list(user_group)
-        for i in range(len(user_group)):  # 每一个group2 都是用户
-            df = pd.DataFrame(user_group[i][1])  # 每个用户的访问轨迹
-            df = df.reset_index(drop=True)
-            user_trajectory_index[df['users_index'][0]] = set(list(df['venues_index']))
-        check_in = check_in.drop(columns=['userid', 'Venue_id', 'utc_time', 'Timezone_offset'])
-        return check_in, friend_list_index, user_trajectory_index, venues_dic, time_hour_dic, time_month_dic, \
+        check_in.sort_values('local_time', ascending=True, inplace=True)
+
+        # user_trajectory_index = {}
+        # check_in = check_in.sort_values('users_index', ascending=True, inplace=False)
+        # user_group = check_in.groupby("users_index")
+        # user_group = list(user_group)
+        # for i in range(len(user_group)):  # 每一个group2 都是用户
+        #     df = pd.DataFrame(user_group[i][1])  # 每个用户的访问轨迹
+        #     df = df.reset_index(drop=True)
+        #     user_trajectory_index[df['users_index'][0]] = set(list(df['venues_index']))
+        check_in = check_in.drop(columns=['userid', 'Venue_id', 'utc_time', 'Timezone_offset', 'local_time'])
+        return check_in, friend_list_index, venues_dic, time_hour_dic, time_month_dic, \
                geo_relations, current_index, user_index, poi_index
 
     def time_partition(day, hour, min):
@@ -598,7 +613,7 @@ def load_data(city):
         # for city in cities:
         check_in, poi_data, users, venues, friend = load_city_data(city)
 
-        check_in_processed, friend_processed, user_trajectory_processed, venues_dic, time_hour_dic, \
+        check_in_processed, friend_processed, venues_dic, time_hour_dic, \
             time_month_dic, geo_relations, current_index, user_index, poi_index = process_city_data(city, check_in, poi_data, users, venues, friend)
 
         poi_details, all_categories, total_nodes = load_extra_poi_info(city, venues, venues_dic, time_hour_dic, time_month_dic, current_index)
@@ -607,9 +622,10 @@ def load_data(city):
         relations['poi_geo'] = geo_relations
 
         # hyper_edges = copy.deepcopy(relations)
-        hyper_edges['trajectory'] = user_trajectory_processed
+        # hyper_edges['trajectory'] = user_trajectory_processed
 
-        total_edge_num = total_relation_num + len(user_trajectory_processed)
+        # total_edge_num = total_relation_num + len(user_trajectory_processed)
+        total_edge_num = total_relation_num
         total_relation_num += len(geo_relations)
 
         print('Total edge number: ', total_edge_num)
@@ -619,7 +635,7 @@ def load_data(city):
 
     #load from file
     try:
-        # raise Exception
+        raise Exception
         relations = pickle.load(open('./data/processed/'+city+'/relations.pkl', 'rb'))
         hyper_edges = pickle.load(open('./data/processed/'+city+'/hyper_edges.pkl', 'rb'))
         total_relation_num = pickle.load(open('./data/processed/'+city+'/total_relation_num.pkl', 'rb'))
@@ -719,18 +735,32 @@ def process_data(args):
     # load data
     relations, edges, total_relations, total_edges, user_index, poi_index, total_nodes = load_data(args.city)
     all_relations = []
-    del edges['trajectory']
+    # del edges['trajectory']
     
     test_data = {}
     train_data = {}
     test_index = {}
     test_index['friendship'] = set(np.random.choice(len(relations['friendship']), int(len(relations['friendship']) * (1-args.train_ratio)), replace=False))
-    test_index['check_in'] = set(np.random.choice(len(relations['check_in']), int(len(relations['check_in']) * (1-args.train_ratio)), replace=False))
+    check_in = relations['check_in']
+    check_in = pd.DataFrame(pd.DataFrame(check_in).values.T)
+    test_users = set(np.random.choice(check_in[0].unique(), int(len(check_in[0].unique()) * (1-args.train_ratio)), replace=False))
+    check_in_test = check_in[check_in[0].isin(test_users)]
+    check_in_train = check_in[~check_in[0].isin(test_users)]
+
+    test_data['check_in'] = check_in_test
+    train_data['check_in'] = check_in_train
+    # check_in_train = pd.DataFrame(check_in_train.values.T)
+    relation_check_in_train = [np.array(x) for x in check_in_train.values]
+    relations['check_in'] = {}
+    for i in range(len(relation_check_in_train)):
+        relations['check_in'][i] = relation_check_in_train[i]
+    edges['check_in'] = relations['check_in']
+    # test_index['check_in'] = set(np.random.choice(len(relations['check_in']), int(len(relations['check_in']) * (1-args.train_ratio)), replace=False))
 
 
     relation_count = 0
     for relation in relations.keys():
-        if relation == 'friendship' or relation == 'check_in':
+        if relation == 'friendship':
             friendship_relation_idx = relation_count
             test_data[relation] = []
             train_data[relation] = []
@@ -750,7 +780,7 @@ def process_data(args):
     e_index = []
     count = 0
     for edge in edges.keys():
-        if edge == 'friendship' or edge == 'check_in':
+        if edge == 'friendship':
             for i in range(len(edges[edge])):
                 if i not in test_index[edge]:
                     # all_edges.append(train_data[edge][i])

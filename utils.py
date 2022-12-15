@@ -2,7 +2,9 @@ import math
 import random
 
 import numpy as np
+import pandas as pd
 import torch
+import torch.nn as nn
 from torch.nn import functional as F
 
 def random_dic(dicts):
@@ -120,6 +122,37 @@ def negative_sample_check_in_train(check_ins, check_in_all, poi_index, time1_ind
 
     return check_in_data, labels
 
+def extract_trajectories(check_in:pd.DataFrame):
+    # check_in = check_in.groupby(check_in[0])
+    check_in = np.array(check_in)
+    user_check_in = {}
+    for i in range(0, len(check_in)):
+        if check_in[i][0] not in user_check_in:
+            user_check_in[check_in[i][0]] = []
+        user_check_in[check_in[i][0]].append(check_in[i])
+
+    trajectories = []
+    trajectories_length = []
+    for key in user_check_in:
+        trajectory = None
+        for i in range(0, len(user_check_in[key])):
+            if trajectory is None:
+                trajectory = user_check_in[key][i].reshape(1, -1)
+            else:
+                trajectory = np.vstack((trajectory, user_check_in[key][i]))
+            if trajectory. shape[0] < 100:
+                trajectories_length.append(trajectory.shape[0])
+                pad_trajectory = np.vstack((trajectory, np.zeros((100 - trajectory.shape[0], trajectory.shape[1]))))
+                trajectories.append(pad_trajectory)
+            else:
+                trajectories_length.append(100)
+                trajectory = trajectory[-100:]
+                trajectories.append(trajectory)
+    trajectories = torch.LongTensor(trajectories)
+    trajectories_length = torch.LongTensor(trajectories_length)
+    return trajectories, trajectories_length
+
+
 def test_topK_friendship(v, user_index, friendship, friendship_all, topK=10):
     user_number = user_index['end'] - user_index['start'] + 1
     v = v[0:user_number]
@@ -174,17 +207,71 @@ def test_topK_friendship(v, user_index, friendship, friendship_all, topK=10):
     return topK
 
 def check_in_topK(predictions, labels, topK=10):
+    # predictions = predictions.cpu().detach().numpy()
+    sorted_predictions, sorted_indices = torch.sort(predictions, dim=-1, descending=True)
+    sorted_indices = sorted_indices[:, :topK].cpu().detach().numpy()
+    # predictions = predictions.cpu().detach().numpy()
+    labels = labels.cpu().detach().numpy()
+    real_1 = 0
+    tot = len(labels)
+    for i in range(len(labels)):
+        sim_i = set(sorted_indices[i])
+        if labels[i] in sim_i:
+            real_1 += 1
+
+    # vecotrized version
+
+    # real_2 = np.sum(np.isin(sorted_indices, labels.reshape(-1, 1)), axis=1)
+
+    # real_3 = 0
+    # for i in range(0, len(labels)):
+    #     sim_i = predictions[i]
+    #     s = sim_i.argsort()[-topK:]
+    #     if labels[i] in s:
+    #         real_3 += 1
+    #     # sim_i = np.sort(predictions[i])[::-1]
+    #     # rank = np.where(sim_i == predictions[i][labels[i]])[0][0]
+    #     # if rank < topK:
+    #     #     real += 1
+    topK = real_1 / tot
+    # print(real_1, real_2, real_3)
+    # return 0
+    return topK
+
+def check_in_MRR(predictions, labels):
+    sorted_predictions, sorted_indices = torch.sort(predictions, dim=-1, descending=True)
+    sorted_predictions = sorted_predictions.cpu().detach().numpy()
     predictions = predictions.cpu().detach().numpy()
+    # sorted_prediction =
     labels = labels.cpu().detach().numpy()
     real = 0
     tot = len(labels)
     for i in range(0, len(labels)):
-        sim_i = predictions[i]
-        s = sim_i.argsort()[-topK:]
-        if labels[i] in s:
-            real += 1
-    topK = real / tot
-    return topK
+        # sim_i = np.sort(predictions[i])[::-1]
+        sim_i = sorted_predictions[i]
+        rank = np.where(sim_i == predictions[i][labels[i]])[0][0]
+        real += 1 / (rank + 1)
+
+
+    mrr = real / tot
+    return mrr
+
+def check_in_avgrank(predictions, labels):
+    sorted_predictions, sorted_indices = torch.sort(predictions, dim=-1, descending=True)
+    sorted_predictions = sorted_predictions.cpu().detach().numpy()
+    predictions = predictions.cpu().detach().numpy()
+    # sorted_prediction =
+    labels = labels.cpu().detach().numpy()
+    real = 0
+    tot = len(labels)
+    for i in range(0, len(labels)):
+        # sim_i = np.sort(predictions[i])[::-1]
+        sim_i = sorted_predictions[i]
+        rank = np.where(sim_i == predictions[i][labels[i]])[0][0]
+        real += rank + 1
+
+    avgrank = real / tot
+    return avgrank
 
 
 
@@ -241,6 +328,7 @@ def decompose_predictions(targets, predictions, max_length):
 def padd_and_decompose(targets, predictions, max_length):
     seq = decompose_predictions(targets, predictions, max_length)
     return torch.stack(seq)
+
 
 
 

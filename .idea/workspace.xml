@@ -3,8 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="cc0dc1f4-b411-4145-9556-8bfcadd22fbd" name="Default Changelist" comment="Normal version">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_processor.py" beforeDir="false" afterPath="$PROJECT_DIR$/data_processor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -14,7 +16,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="triplet_loss" />
+        <entry key="$PROJECT_DIR$" value="master" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -46,7 +48,8 @@
     <property name="node.js.detected.package.tslint" value="true" />
     <property name="node.js.selected.package.eslint" value="(autodetect)" />
     <property name="node.js.selected.package.tslint" value="(autodetect)" />
-    <property name="settings.editor.selected.configurable" value="reference.settings.project.statistic.project.settings" />
+    <property name="restartRequiresConfirmation" value="false" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RunManager">
     <configuration name="train" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -56,7 +59,7 @@
       <envs>
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
-      <option name="SDK_HOME" value="sftp://urbancom@172.18.36.43:22/raid/lab_xs/anaconda3/envs/zjx/bin/python3.8" />
+      <option name="SDK_HOME" value="D:\Applications\Python\python.exe" />
       <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -108,9 +111,20 @@
       <workItem from="1670589845277" duration="1371000" />
       <workItem from="1670594448791" duration="41000" />
       <workItem from="1670639033958" duration="7161000" />
-      <workItem from="1670646608375" duration="11956000" />
-      <workItem from="1670664012260" duration="613000" />
-      <workItem from="1670664630936" duration="2616000" />
+      <workItem from="1670646608375" duration="28413000" />
+      <workItem from="1670742607011" duration="2346000" />
+      <workItem from="1670752291831" duration="601000" />
+      <workItem from="1670771808687" duration="5420000" />
+      <workItem from="1670837796405" duration="5848000" />
+      <workItem from="1670848335375" duration="3538000" />
+      <workItem from="1670855963754" duration="665000" />
+      <workItem from="1670856644971" duration="2290000" />
+      <workItem from="1670900104957" duration="3420000" />
+      <workItem from="1670926994876" duration="1574000" />
+      <workItem from="1670944946907" duration="1645000" />
+      <workItem from="1670993992939" duration="6240000" />
+      <workItem from="1671100114324" duration="5986000" />
+      <workItem from="1671117612520" duration="4574000" />
     </task>
     <task id="LOCAL-00001" summary="Add CEGAT to our model">
       <created>1669227508456</created>
@@ -144,7 +158,19 @@
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="trajectory" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
           </value>
         </entry>
       </map>
@@ -158,18 +184,22 @@
     <option name="LAST_COMMIT_MESSAGE" value="Normal version" />
   </component>
   <component name="XDebuggerManager">
-    <watches-manager>
-      <configuration name="PythonConfigurationType">
-        <watch expression="predictions.max()" language="Python" />
-        <watch expression="norm.min()" language="Python" />
-        <watch expression="np.argmax(-poi_emb.norm(dim=1, keepdim=True).cpu().detach().numpy())" language="Python" />
-        <watch expression="poi_emb[2355]" language="Python" />
-        <watch expression="self.E.weight.data[2355+3754]" language="Python" />
-        <watch expression="[check_in + [labels[i]] for i, check_in in enumerate(batch)]" language="Python" />
-      </configuration>
-    </watches-manager>
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/data_processor.py</url>
+          <line>282</line>
+          <option name="timeStamp" value="23" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/data_processor.py</url>
+          <line>745</line>
+          <option name="timeStamp" value="26" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/HKG$train.coverage" NAME="train Coverage Results" MODIFIED="1670665859775" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/HKG$train.coverage" NAME="train Coverage Results" MODIFIED="1671117810086" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

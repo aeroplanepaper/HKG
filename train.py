@@ -1,3 +1,4 @@
+import collections
 import datetime
 import random
 
@@ -102,28 +103,109 @@ def test_friendship(model, friendship_test_data, friendship_test_label, friendsh
               'ap: {:.4f}'.format(ap))
 
 
-def test_check_in(model, check_in_test_data, check_in_test_label, epoch, writer):
+def test_check_in(model, check_in_test_data, check_in_test_label,check_in_test_data_least,check_in_test_data_least_label, epoch,run, writer):
     model.eval()
     with torch.no_grad():
-        predictions= model(index=check_in_test_data, mode='test_gat_check_in')
+        predictions_all= model(index=check_in_test_data, mode='test_gat_check_in')
 
-        top1 = utils.check_in_topK(predictions, check_in_test_label, topK=1)
-        top5 = utils.check_in_topK(predictions, check_in_test_label, topK=5)
-        top10 = utils.check_in_topK(predictions, check_in_test_label, topK=10)
-        loss = F.cross_entropy(predictions, check_in_test_label)
-        # top1 = utils.check_in_topK(similarity, check_in_test_label, topK=1)
-        # top5 = utils.check_in_topK(similarity, check_in_test_label, topK=5)
-        # top10 = utils.check_in_topK(similarity, check_in_test_label, topK=10)
-        print('Test at epoch %d' % epoch,
+        top1 = utils.check_in_topK(predictions_all, check_in_test_label, topK=1)
+        top5 = utils.check_in_topK(predictions_all, check_in_test_label, topK=5)
+        top10 = utils.check_in_topK(predictions_all, check_in_test_label, topK=10)
+        top20 = utils.check_in_topK(predictions_all, check_in_test_label, topK=20)
+        mrr = utils.check_in_MRR(predictions_all, check_in_test_label)
+        avg_rank = utils.check_in_avgrank(predictions_all, check_in_test_label)
+        loss = F.cross_entropy(predictions_all, check_in_test_label)
+        print('Test at epoch %d on all test data' % epoch,
               'loss: {:.4f}'.format(loss),
               'top1: {:.4f}'.format(top1),
               'top5: {:.4f}'.format(top5),
-              'top10: {:.4f}'.format(top10))
-        writer.add_scalar('Test/top1', top1, epoch)
-        writer.add_scalar('Test/top5', top5, epoch)
-        writer.add_scalar('Test/top10', top10, epoch)
-        writer.add_scalar('Test/loss', loss, epoch)
+              'top10: {:.4f}'.format(top10),
+              'top20: {:.4f}'.format(top20),
+              'MRR: {:.4f}'.format(mrr),
+              'avg_rank: {:.4f}'.format(avg_rank))
 
+        predictions_least = model(index=check_in_test_data_least, mode='test_gat_check_in')
+        top1_least = utils.check_in_topK(predictions_least, check_in_test_data_least_label, topK=1)
+        top5_least = utils.check_in_topK(predictions_least, check_in_test_data_least_label, topK=5)
+        top10_least = utils.check_in_topK(predictions_least, check_in_test_data_least_label, topK=10)
+        top20_least = utils.check_in_topK(predictions_least, check_in_test_data_least_label, topK=20)
+        mrr_least = utils.check_in_MRR(predictions_least, check_in_test_data_least_label)
+        avg_rank_least = utils.check_in_avgrank(predictions_least, check_in_test_data_least_label)
+        loss_least = F.cross_entropy(predictions_least, check_in_test_data_least_label)
+
+
+        print('Test at epoch %d on least visited poi test data' % epoch,
+                'loss: {:.4f}'.format(loss_least),
+                'top1: {:.4f}'.format(top1_least),
+                'top5: {:.4f}'.format(top5_least),
+                'top10: {:.4f}'.format(top10_least),
+                'top20: {:.4f}'.format(top20_least),
+                'MRR: {:.4f}'.format(mrr_least),
+                'avg_rank: {:.4f}'.format(avg_rank_least))
+
+        writer.add_scalar('Run:{}/Test/Top1'.format(run), top1, epoch)
+        writer.add_scalar('Run:{}/Test/Top5'.format(run), top5, epoch)
+        writer.add_scalar('Run:{}/Test/Top10'.format(run), top10, epoch)
+        writer.add_scalar('Run:{}/Test/Top20'.format(run), top20, epoch)
+        writer.add_scalar('Run:{}/Test/MRR'.format(run), mrr, epoch)
+        writer.add_scalar('Run:{}/Test/AvgRank'.format(run), avg_rank, epoch)
+        writer.add_scalar('Run:{}/Test/Loss'.format(run), loss, epoch)
+
+        writer.add_scalar('Run:{}/Test/Top1_least'.format(run), top1_least, epoch)
+        writer.add_scalar('Run:{}/Test/Top5_least'.format(run), top5_least, epoch)
+        writer.add_scalar('Run:{}/Test/Top10_least'.format(run), top10_least, epoch)
+        writer.add_scalar('Run:{}/Test/Top20_least'.format(run), top20_least, epoch)
+        writer.add_scalar('Run:{}/Test/MRR_least'.format(run), mrr_least, epoch)
+        writer.add_scalar('Run:{}/Test/AvgRank_least'.format(run), avg_rank_least, epoch)
+        writer.add_scalar('Run:{}/Test/Loss_least'.format(run), loss_least, epoch)
+
+        if 'top1' not in record:
+            record['top1'] = [top1]
+            record['top5'] = [top5]
+            record['top10'] = [top10]
+            record['top20'] = [top20]
+            record['mrr'] = [mrr]
+            record['avg_rank'] = [avg_rank]
+            record['loss'] = [loss]
+            record['top1_least'] = [top1_least]
+            record['top5_least'] = [top5_least]
+            record['top10_least'] = [top10_least]
+            record['top20_least'] = [top20_least]
+            record['mrr_least'] = [mrr_least]
+            record['avg_rank_least'] = [avg_rank_least]
+            record['loss_least'] = [loss_least]
+        else:
+            if len(record['top1']) < run + 1:
+                record['top1'].append(top1)
+                record['top5'].append(top5)
+                record['top10'].append(top10)
+                record['top20'].append(top20)
+                record['mrr'].append(mrr)
+                record['avg_rank'].append(avg_rank)
+                record['loss'].append(loss)
+                record['top1_least'].append(top1_least)
+                record['top5_least'].append(top5_least)
+                record['top10_least'].append(top10_least)
+                record['top20_least'].append(top20_least)
+                record['mrr_least'].append(mrr_least)
+                record['avg_rank_least'].append(avg_rank_least)
+                record['loss_least'].append(loss_least)
+            elif record['mrr'][run] < mrr:
+                record['top1'][run] = top1
+                record['top5'][run] = top5
+                record['top10'][run] = top10
+                record['top20'][run] = top20
+                record['mrr'][run] = mrr
+                record['avg_rank'][run] = avg_rank
+                record['loss'][run] = loss
+                record['top1_least'][run] = top1_least
+                record['top5_least'][run] = top5_least
+                record['top10_least'][run] = top10_least
+                record['top20_least'][run] = top20_least
+                record['mrr_least'][run] = mrr_least
+                record['avg_rank_least'][run] = avg_rank_least
+                record['loss_least'][run] = loss_least
+                print('New record at epoch %d' % epoch)
 
 def train(args):
     # all_relations, relation_count, friendship_relation_idx, edge_index, test_data, train_data, user_index, poi_index, hyperedge_num, hypernode_num = process_data(args)
@@ -182,13 +264,22 @@ def train(args):
     # prepare poi data
     check_in_train = train_data['check_in']
     check_in_test = test_data['check_in']
+    check_in_train = utils.extract_trajectories(check_in_train)
+    check_in_test = utils.extract_trajectories(check_in_test)
     check_in_train_label = [v[1] - poi_index['start'] for v in check_in_train]
     check_in_test_label = [v[1] - poi_index['start'] for v in check_in_test]
-
+    check_in_count = collections.Counter(check_in_test_label + check_in_train_label)
+    # find 10% least popular pois
+    check_in_count = sorted(check_in_count.items(), key=lambda x: x[1])
+    check_in_count = check_in_count[:int(len(check_in_count) * 0.3)]
+    check_in_least = set([v[0] for v in check_in_count])
+    check_in_test_data_least = [v for v in check_in_test if v[1] - poi_index['start'] in check_in_least]
+    check_in_test_data_least_label = [v[1] - poi_index['start'] for v in check_in_test_data_least]
 
 
     check_in_train = [[v[0], v[5], v[6]] for v in check_in_train]
     check_in_test = [[v[0], v[5], v[6]] for v in check_in_test]
+    check_in_test_data_least = [[v[0], v[5], v[6]] for v in check_in_test_data_least]
     check_in_all = check_in_train + check_in_test
     check_in_all = [tuple(v) for v in check_in_all]
     check_in_train = np.array(check_in_train)
@@ -209,6 +300,8 @@ def train(args):
     check_in_test = torch.LongTensor(check_in_test).to(device)
     check_in_train_label = torch.LongTensor(check_in_train_label).to(device)
     check_in_test_label = torch.LongTensor(check_in_test_label).to(device)
+    check_in_test_data_least = torch.LongTensor(check_in_test_data_least).to(device)
+    check_in_test_data_least_label = torch.LongTensor(check_in_test_data_least_label).to(device)
     ########################################
     # prepare knowledge graph data
     total_relations = len(all_relations)
@@ -233,6 +326,7 @@ def train(args):
 
     # if args.pretrained:
     #     model.load_state_dict(torch.load('models/{}_model.pt'.format(args.model)))
+    writer = SummaryWriter('runs/task_{}_{}_useKG_{}_GAT_model_{}_kg_train{}_gat_lr_{}_{}'.format(args.task,args.city, args.use_kg,args.gat_model, args.num_epochs,args.gat_lr, datetime.datetime.now()))
 
     for run in range(args.runs):
         if args.gat_model in ['CEGCN', 'CEGAT']:
@@ -249,9 +343,9 @@ def train(args):
         elif args.task == 'check_in':
             criterion_gat = nn.CrossEntropyLoss()
             # criterion_gat = nn.BCEWithLogitsLoss()
+
         lr_scheduler_gat = optim.lr_scheduler.StepLR(optimizer_kg, step_size=200, gamma=0.8)
 
-        writer = SummaryWriter('runs/task_{}_{}_{}_useKG_{}_GAT_model_{}_kg_train{}_gat_lr_{}_{}'.format(args.task,args.city, run, args.use_kg,args.gat_model, args.num_epochs,args.gat_lr, datetime.datetime.now()))
         print('KG training')
         if args.use_kg:
             for epoch in range(args.num_epochs):
@@ -346,8 +440,8 @@ def train(args):
                 np.random.shuffle(check_in_train_idx)
                 for iteration in range(len(check_in_train) // args.gat_batch_size + 1):
                     last_iteration = iteration == len(check_in_train) // args.gat_batch_size
-                    # if last_iteration:
-                    #     continue
+                    if last_iteration:
+                        continue
                     batch_idx = check_in_train_idx[iteration * args.gat_batch_size: (iteration + 1) * args.gat_batch_size] \
                         if not last_iteration else check_in_train_idx[iteration * args.gat_batch_size:]
                     batch = check_in_train[batch_idx]
@@ -364,47 +458,97 @@ def train(args):
                     top_1 = utils.check_in_topK(predictions, labels, 1)
                     top_5 = utils.check_in_topK(predictions, labels, 5)
                     top_10 = utils.check_in_topK(predictions, labels, 10)
+                    top_20 = utils.check_in_topK(predictions, labels, 20)
+                    mrr = utils.check_in_MRR(predictions, labels)
+                    avg_rank = utils.check_in_avgrank(predictions, labels)
                     #
                     # acc = sklearn.metrics.accuracy_score(labels.cpu().detach().numpy(),
                     #                                         predictions.cpu().detach().numpy() > 0.5) * 100
                     #
-                    # auc = sklearn.metrics.roc_auc_score(labels.cpu().detach().numpy(),
-                    #                                     predictions.cpu().detach().numpy())
-                    # ap = sklearn.metrics.average_precision_score(labels.cpu().detach().numpy().astype(int),
-                    #                                             predictions.cpu().detach().numpy())
+                    labels = labels.cpu().detach()
+                    one_hot_labels = torch.zeros(len(labels), poi_index['end'] - poi_index['start'] + 1).scatter_(1, labels.unsqueeze(1), 1)
+                    normalized_predictions = F.softmax(predictions, dim=1)
+                    # auc = sklearn.metrics.roc_auc_score(one_hot_labels.numpy(),
+                    #                                     normalized_predictions.cpu().detach().numpy(), multi_class='ovo')
+                    # ap = sklearn.metrics.average_precision_score(one_hot_labels.numpy().astype(int),
+                    #                                             normalized_predictions.cpu().detach().numpy(), average='macro')
+                    # f1 = sklearn.metrics.f1_score(one_hot_labels.numpy().astype(int),
+                    #                                             normalized_predictions.cpu().detach().numpy() > 0.5, average='macro')
 
-                    writer.add_scalar('gat_loss', gat_loss.item(), iteration)
-                    writer.add_scalar('Train/Top1', top_1, iteration)
-                    writer.add_scalar('Train/Top5', top_5, iteration)
-                    writer.add_scalar('Train/Top10', top_10, iteration)
 
+                    writer.add_scalar('Run{}/gat_loss'.format(run), gat_loss.item(), iteration)
+                    writer.add_scalar('Run{}/Train/Top1'.format(run), top_1, iteration)
+                    writer.add_scalar('Run{}/Train/Top5'.format(run), top_5, iteration)
+                    writer.add_scalar('Run{}/Train/Top10'.format(run), top_10, iteration)
+                    writer.add_scalar('Run{}/Train/Top20'.format(run), top_20, iteration)
+                    writer.add_scalar('Run{}/Train/MRR'.format(run), mrr, iteration)
+                    writer.add_scalar('Run{}/Train/AvgRank'.format(run), avg_rank, iteration)
+                    # writer.add_scalar('run{}/Train/AUC'.format(run), auc, iteration)
+                    # writer.add_scalar('run{}/Train/AP'.format(run), ap, iteration)
+                    # writer.add_scalar('run{}/Train/F1'.format(run), f1, iteration)
+                    #
                     # gat_loss = criterion_gat(predictions, torch.ones(len(batch)).to(device))
                     gat_loss.backward()
                     optimizer_gat.step()
                     if iteration % 20 == 0 or last_iteration:
                         # print('Epoch {}, iteration {}, gat_loss: {:.4f}, acc: {:.4f}, auc: {:.4f}, ap: {:.4f}'.format(epoch, iteration, gat_loss.item(), acc, auc, ap))
 
-                        print('Epoch {}, iteration {}, gat_loss: {:.4f}, top_1: {:.4f}, top_5: {:.4f}, top_10: {:.4f}'.format(
-                            epoch, iteration, gat_loss.item(), top_1, top_5, top_10))
+                        print('Epoch {}, iteration {}, gat_loss: {:.4f}, top_1: {:.4f}, top_5: {:.4f}, top_10: {:.4f}, top_20:{:.4f}, MRR:{:.4f}, AvgRank:{:.4f}'.format(
+                            epoch, iteration, gat_loss.item(), top_1, top_5, top_10, top_20, mrr, avg_rank))
+                        # print('Epoch {}, iteration {}, gat_loss: {:.4f}, top_1: {:.4f}, top_5: {:.4f}, top_10: {:.4f}, top_20:{:.4f}, MRR:{:.4f}, AUC:{:.4f}, AP:{:.4f}, F1:{:.4f}'.format(
+                        #     epoch, iteration, gat_loss.item(), top_1, top_5, top_10, top_20, mrr, auc, ap, f1))
                 if epoch % 5 == 0:
-                    test_check_in(model, check_in_test, check_in_test_label, epoch, writer)
+                    test_check_in(model, check_in_test, check_in_test_label, check_in_test_data_least, check_in_test_data_least_label, epoch,run, writer)
+                if epoch == args.gat_train_iter - 1:
+                    torch.save(model.state_dict(), 'models/{}_use_KG_{}_runs_{}.pt'.format(args.model, args.use_kg, run))
 
 
 
-        writer.close()
-    top_k = np.array(record['top_k'])
-    acc = np.array(record['acc'])
-    auc = np.array(record['auc'])
-    ap = np.array(record['ap'])
-    print('top_k:{:.4f} ± {:.4f}'.format(top_k.mean(axis=0), top_k.std(axis=0)))
-    print('acc:{:.4f} ± {:.4f}'.format(acc.mean(axis=0), acc.std(axis=0)))
-    print('auc:{:.4f} ± {:.4f}'.format(auc.mean(axis=0), auc.std(axis=0)))
-    print('ap:{:.4f} ± {:.4f}'.format(ap.mean(axis=0), ap.std(axis=0)))
+    writer.close()
+    top_1 = np.array(record['top1'])
+    top_5 = np.array(record['top5'])
+    top_10 = np.array(record['top10'])
+    top_20 = np.array(record['top20'])
+    mrr = np.array(record['mrr'])
+    avg_rank = np.array(record['avg_rank'])
+    top_1_least = np.array(record['top1_least'])
+    top_5_least = np.array(record['top5_least'])
+    top_10_least = np.array(record['top10_least'])
+    top_20_least = np.array(record['top20_least'])
+    mrr_least = np.array(record['mrr_least'])
+    avg_rank_least = np.array(record['avg_rank_least'])
+
+    # print('top_k:{:.4f} ± {:.4f}'.format(top_k.mean(axis=0), top_k.std(axis=0)))
+    # print('acc:{:.4f} ± {:.4f}'.format(acc.mean(axis=0), acc.std(axis=0)))
+    # print('auc:{:.4f} ± {:.4f}'.format(auc.mean(axis=0), auc.std(axis=0)))
+    # print('ap:{:.4f} ± {:.4f}'.format(ap.mean(axis=0), ap.std(axis=0)))
+    # print('f1:{:.4f} ± {:.4f}'.format(f1.mean(axis=0), f1.std(axis=0)))
+    print('top_1:{:.4f} ± {:.4f}'.format(top_1.mean(axis=0), top_1.std(axis=0)))
+    print('top_5:{:.4f} ± {:.4f}'.format(top_5.mean(axis=0), top_5.std(axis=0)))
+    print('top_10:{:.4f} ± {:.4f}'.format(top_10.mean(axis=0), top_10.std(axis=0)))
+    print('top_20:{:.4f} ± {:.4f}'.format(top_20.mean(axis=0), top_20.std(axis=0)))
+    print('mrr:{:.4f} ± {:.4f}'.format(mrr.mean(axis=0), mrr.std(axis=0)))
+    print('avg_rank:{:.4f} ± {:.4f}'.format(avg_rank.mean(axis=0), avg_rank.std(axis=0)))
+    print('top_1_least:{:.4f} ± {:.4f}'.format(top_1_least.mean(axis=0), top_1_least.std(axis=0)))
+    print('top_5_least:{:.4f} ± {:.4f}'.format(top_5_least.mean(axis=0), top_5_least.std(axis=0)))
+    print('top_10_least:{:.4f} ± {:.4f}'.format(top_10_least.mean(axis=0), top_10_least.std(axis=0)))
+    print('top_20_least:{:.4f} ± {:.4f}'.format(top_20_least.mean(axis=0), top_20_least.std(axis=0)))
+    print('mrr_least:{:.4f} ± {:.4f}'.format(mrr_least.mean(axis=0), mrr_least.std(axis=0)))
+    print('avg_rank_least:{:.4f} ± {:.4f}'.format(avg_rank_least.mean(axis=0), avg_rank_least.std(axis=0)))
+
     with open('results/{}_useKG_{}_GAT_model_{}_kg_train{}_gat_lr_{}.txt'.format(args.city, args.use_kg,args.gat_model, args.num_epochs, args.gat_lr), 'w') as f:
-        f.write('top_k:{:.4f} ± {:.4f}\n'.format(top_k.mean(axis=0), top_k.std(axis=0)))
-        f.write('acc:{:.4f} ± {:.4f}\n'.format(acc.mean(axis=0), acc.std(axis=0)))
-        f.write('auc:{:.4f} ± {:.4f}\n'.format(auc.mean(axis=0), auc.std(axis=0)))
-        f.write('ap:{:.4f} ± {:.4f}\n'.format(ap.mean(axis=0), ap.std(axis=0)))
+        f.write('top_1:{:.4f} ± {:.4f}'.format(top_1.mean(axis=0), top_1.std(axis=0)))
+        f.write('top_5:{:.4f} ± {:.4f}'.format(top_5.mean(axis=0), top_5.std(axis=0)))
+        f.write('top_10:{:.4f} ± {:.4f}'.format(top_10.mean(axis=0), top_10.std(axis=0)))
+        f.write('top_20:{:.4f} ± {:.4f}'.format(top_20.mean(axis=0), top_20.std(axis=0)))
+        f.write('mrr:{:.4f} ± {:.4f}'.format(mrr.mean(axis=0), mrr.std(axis=0)))
+        f.write('avg_rank:{:.4f} ± {:.4f}'.format(avg_rank.mean(axis=0), avg_rank.std(axis=0)))
+        f.write('top_1_least:{:.4f} ± {:.4f}'.format(top_1_least.mean(axis=0), top_1_least.std(axis=0)))
+        f.write('top_5_least:{:.4f} ± {:.4f}'.format(top_5_least.mean(axis=0), top_5_least.std(axis=0)))
+        f.write('top_10_least:{:.4f} ± {:.4f}'.format(top_10_least.mean(axis=0), top_10_least.std(axis=0)))
+        f.write('top_20_least:{:.4f} ± {:.4f}'.format(top_20_least.mean(axis=0), top_20_least.std(axis=0)))
+        f.write('mrr_least:{:.4f} ± {:.4f}'.format(mrr_least.mean(axis=0), mrr_least.std(axis=0)))
+        f.write('avg_rank_least:{:.4f} ± {:.4f}'.format(avg_rank_least.mean(axis=0), avg_rank_least.std(axis=0)))
 
 
 def main():
@@ -415,10 +559,10 @@ def main():
 
     parser.add_argument('--train_ratio', type=float, default=0.8, help='Training ratio')
 
-    parser.add_argument('--runs', type=int, default=1, help='Number of runs')
+    parser.add_argument('--runs', type=int, default=3, help='Number of runs')
 
-    parser.add_argument('--cuda', type=int, default=6, help='GPU ID')
-    parser.add_argument('--gat_train_iter', type=int, default=2000, help='Number of GAT training iterations')
+    parser.add_argument('--cuda', type=int, default=2, help='GPU ID')
+
 
     # KG parameters
     parser.add_argument('--kg_model', type=str, default='HypE',
@@ -427,11 +571,12 @@ def main():
     parser.add_argument('--neg_ratio', type=int, default=10, help='Negative ratio')
     parser.add_argument('--num_epochs', type=int, default=100 , help='Number of epochs')
     parser.add_argument('--kg_batch_size', type=int, default=512, help='KG Batch size')
-    parser.add_argument('--use_kg', type=bool, default=True, help='Use KG or not')
+    parser.add_argument('--use_kg', type=bool, default=False, help='Use KG or not')
 
     # GAT parameters
-    parser.add_argument('--gat_model', type=str, default='CEGAT',
+    parser.add_argument('--gat_model', type=str, default='HCHA',
                         help='GAT model, choices=[HCHA, CEGAT, CEGCN]')
+    parser.add_argument('--gat_train_iter', type=int, default=500, help='Number of GAT training iterations')
     parser.add_argument('--gat_batch_size', type=int, default=512, help='GAT Batch size')
     parser.add_argument('--gat_lr', type=float, default=0.00001, help='Learning rate')
     parser.add_argument('--gat_weight_decay', type=float, default=0.0001, help='Weight decay')
